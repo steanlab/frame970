@@ -137,6 +137,29 @@ label{color:var(--mut);font-size:13px}
 </div>
 
 <div class="card">
+  <h2>OpenDisplay</h2>
+  <div class="row"><small style="color:var(--mut)">Прошивка понимает команды OpenDisplay (двухбайтовые, начинаются с 00). Здесь можно проверить их без Home Assistant: версия, конфигурация и загрузка текущей картинки прямой записью 0070 / 0071 / 0072. Картинка сохраняется в выбранный слот и сразу показывается.</small></div>
+  <div class="row">
+    <button class="nc" id="bOdVer">Версия (0043)</button>
+    <button class="nc" id="bOdCfg">Конфигурация (0040)</button>
+    <button class="nc" id="bOdMsd">MSD (0044)</button>
+  </div>
+  <div class="row">
+    <label>поворот потока</label>
+    <select id="odMode"><option value="1">1: строки в обратном порядке</option><option value="2">2: пиксели строки в обратном порядке</option><option value="0">0: как есть (зеркально)</option><option value="3">3: оба (зеркально)</option></select>
+    <label>слот</label>
+    <select id="odSlot"><option value="3">3</option><option value="2">2</option><option value="1">1</option><option value="0">0</option></select>
+    <button class="nc" id="bOdSet">Записать в метку (4D)</button>
+  </div>
+  <div class="row">
+    <label>чанк</label><input id="odChunk" type="number" min="10" max="230" value="230" style="width:70px"><label>байт</label>
+    <button class="nc pri" id="bOdUp" disabled>Загрузить по OpenDisplay</button>
+  </div>
+  <div class="row"><progress id="odProg" value="0" max="100"></progress></div>
+  <div class="row"><small id="odInfo" style="color:var(--mut)">Загружается картинка, подготовленная выше (та же, что идёт в слот).</small></div>
+</div>
+
+<div class="card">
   <h2>Панель</h2>
   <div class="row">
     <button data-c="32">Температура панели (32)</button>
@@ -241,6 +264,7 @@ setState(false, "не подключено");
 function onNotify(ev){
   const v = ev.target.value;
   const bytes = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+  if (!buf.length && bytes.length >= 2 && (bytes[0] === 0x00 || bytes[0] === 0xFF)){ odHook(bytes); return; }      // OpenDisplay reply, text lines never start with 00 or FF
   for (const b of bytes){
     if (b === 10){ if (buf.length){ add(buf); lineHook(buf); } buf = ""; }
     else if (b === 13) {}
@@ -253,7 +277,7 @@ async function connect(){
   if (!navigator.bluetooth){ add("Web Bluetooth недоступен в этом браузере", "sys"); return; }
   try{
     dev = await navigator.bluetooth.requestDevice({
-      filters:[{namePrefix:"n970-"}],
+      filters:[{namePrefix:"OD"}, {namePrefix:"n970-"}],
       optionalServices:[SVC]
     });
     dev.addEventListener("gattserverdisconnected", () => {
@@ -394,6 +418,20 @@ function toScan(idx){
   return out;
 }
 
+/* Stream for OpenDisplay direct write (0071): 960 x 672, 2 bits per pixel, black 0 white 1 yellow 2 red 3, line after line.
+   The firmware turns it into the slot format: colour index xor 1, mode bit 0 reverses the order of the lines, bit 1 the pixels of a line. This is the inverse. */
+function odRev4(b){ return ((b & 3) << 6) | ((b & 0x0C) << 2) | ((b >> 2) & 0x0C) | ((b >> 6) & 3); }
+function odStream(frame, mode){
+  const out = new Uint8Array(672 * 240);
+  for (let l = 0; l < 672; l++){
+    const dl = (mode & 1) ? 671 - l : l;
+    for (let o = 0; o < 240; o++){
+      const src = frame[dl * 240 + ((mode & 2) ? 239 - o : o)];
+      out[l * 240 + o] = ((mode & 2) ? odRev4(src) : src) ^ 0x55;
+    }
+  }
+  return out;
+}
 function rotate180(idx){ const n = idx.length, o = new Uint8Array(n); for (let i = 0; i < n; i++) o[i] = idx[n - 1 - i]; return o; }
 
 /* ---- calibration charts, built directly from the four panel colours (no dithering), portrait 672 x 960 ----
@@ -486,6 +524,7 @@ function chartTv(){
 function refreshUp(){
   $("bUp").disabled = !(chr && dev && dev.gatt.connected && frame) || upBusy;
   $("bUpStop").disabled = !upBusy;
+  $("bOdUp").disabled = !(chr && dev && dev.gatt.connected && frame) || upBusy;
 }
 
 let chartIdx = null;
@@ -648,6 +687,91 @@ $("bSsGet").onclick = () => send("4B");
 $("bSsStep").onclick = () => send("4C");
 $("bUp").onclick = () => { if (frame) upload(slotNo(), frame); };
 $("bUpStop").onclick = () => { upAbort = true; };
+/* ---- OpenDisplay ---- */
+const odWaits = {};
+function odWait(cmd, ms){
+  return new Promise((res, rej) => {
+    const t = setTimeout(() => { delete odWaits[cmd]; rej(new Error("нет ответа на 00 " + h2(cmd))); }, ms);
+    odWaits[cmd] = {res, rej, t};
+  });
+}
+let odCfg = [], odCfgTotal = 0;
+function odHook(b){
+  add("OD ← " + hx(b));
+  const w = odWaits[b[1]];
+  if (b[0] === 0xFF){
+    if (w){ clearTimeout(w.t); delete odWaits[b[1]]; w.rej(new Error("устройство ответило FF " + h2(b[1]))); }
+    return;
+  }
+  if (b[1] === 0x40){                         // configuration: chunk 0 = 00 40 0000 len16 data, next chunks 00 40 nnnn data
+    const idx = b[2] | (b[3] << 8);
+    if (idx === 0){ odCfg = Array.from(b.subarray(6)); odCfgTotal = b[4] | (b[5] << 8); } else odCfg.push(...b.subarray(4));
+    if (odCfg.length >= odCfgTotal && odCfgTotal) odShowCfg(Uint8Array.from(odCfg));
+  }
+  if (b[1] === 0x43 && b.length >= 5){
+    add("OD версия " + b[2] + "." + b[3] + " " + String.fromCharCode(...b.subarray(5, 5 + b[4])), "sys");
+  }
+  if (w){ clearTimeout(w.t); delete odWaits[b[1]]; w.res(b); }
+}
+function odShowCfg(d){                       // outer packet: len16 version, packets (number, id, payload), crc16
+  const names = {1: "система", 2: "производитель", 4: "питание", 32: "дисплей"}, sizes = {1: 22, 2: 22, 4: 30, 32: 46};
+  let p = 3; const parts = [];
+  while (p < d.length - 2){
+    const id = d[p + 1], n = sizes[id];
+    if (!n) { parts.push("пакет " + id + "?"); break; }
+    if (id === 32){
+      const q = d.subarray(p + 2), W = q[4] | (q[5] << 8), H = q[6] | (q[7] << 8);
+      parts.push("дисплей " + W + "×" + H + ", схема цветов " + q[22] + ", поворот " + q[14] + ", режимы передачи 0x" + q[23].toString(16));
+    } else parts.push(names[id] || ("пакет " + id));
+    p += 2 + n;
+  }
+  add("OD конфигурация (" + d.length + " Б): " + parts.join("; "), "sys");
+}
+$("bOdVer").onclick = () => send("00 43");
+$("bOdCfg").onclick = () => send("00 40");
+$("bOdMsd").onclick = () => send("00 44");
+$("bOdSet").onclick = () => send("4d " + h2(+$("odMode").value) + " " + h2(+$("odSlot").value));
+async function odUpload(data){
+  upBusy = true; refreshUp();
+  const prog = $("odProg"), info = $("odInfo");
+  prog.value = 0;
+  try{
+    const mode = +$("odMode").value, stream = odStream(data, mode);
+    const chunk = Math.max(10, Math.min(230, Math.round(+$("odChunk").value || 230)));
+    info.textContent = "Метка стирает слот…";
+    let w = odWait(0x70, 90000);
+    await send(Uint8Array.from([0x00, 0x70]), true); await w;
+    const t0 = performance.now();
+    for (let off = 0; off < stream.length; off += chunk){
+      if (upAbort) throw new Error("прервано");
+      const n = Math.min(chunk, stream.length - off);
+      const pkt = new Uint8Array(2 + n); pkt[0] = 0x00; pkt[1] = 0x71; pkt.set(stream.subarray(off, off + n), 2);
+      w = odWait(0x71, 5000);
+      if (chr.writeValueWithoutResponse) await chr.writeValueWithoutResponse(pkt); else await chr.writeValue(pkt);
+      await w;
+      if (!((off / chunk) & 15)){
+        prog.value = 100 * off / stream.length;
+        info.textContent = Math.round(off / 1024) + " из " + Math.round(stream.length / 1024) + " КБ, " + (off / 1024 / ((performance.now() - t0) / 1000)).toFixed(1) + " КБ/с";
+      }
+    }
+    prog.value = 100;
+    info.textContent = "Данные отправлены, проверка…";
+    const w73 = odWait(0x73, 120000), w74 = odWait(0x74, 120000);
+    w73.catch(() => {}); w74.catch(() => {});
+    w = odWait(0x72, 30000);
+    await send(Uint8Array.from([0x00, 0x72, 0x00]), true); await w;
+    info.textContent = "Принято за " + ((performance.now() - t0) / 1000).toFixed(1) + " с. Панель обновляется (до минуты)…";
+    await Promise.race([w73, w74.then(() => { throw new Error("обновление панели не уложилось в таймаут"); })]);
+    info.textContent = "Готово: картинка загружена по OpenDisplay и показана.";
+  }catch(e){
+    add("OpenDisplay: " + e.message, "sys");
+    info.textContent = "Не удалось: " + e.message;
+  }finally{
+    for (const k of Object.keys(odWaits)){ clearTimeout(odWaits[k].t); delete odWaits[k]; }
+    upBusy = false; refreshUp();
+  }
+}
+$("bOdUp").onclick = () => { if (frame) odUpload(frame); };
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
 </body>
