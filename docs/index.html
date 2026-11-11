@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#14161a">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<title>frame970</title>
+<style>
+:root{--bg:#f4f5f7;--fg:#1c1f24;--card:#fff;--bd:#d5d9e0;--acc:#2563eb;--mut:#6b7280;--log:#0f172a;--logfg:#d1fae5}
+@media (prefers-color-scheme:dark){:root{--bg:#14161a;--fg:#e6e8eb;--card:#1e2126;--bd:#343a43;--acc:#60a5fa;--mut:#9aa3af;--log:#0b0d10;--logfg:#a7f3d0}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-serif;padding:12px 16px 40px}
+main{max-width:760px;margin:0 auto}
+h1{font-size:18px;margin:6px 0 10px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin-bottom:12px}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);margin:0 0 8px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px}
+button{font:inherit;padding:7px 12px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--fg);cursor:pointer}
+button:hover:not(:disabled){border-color:var(--acc)}
+button:disabled{opacity:.45;cursor:default}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+input{font:inherit;padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);width:5.5em}
+input.wide{width:14em}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin-right:4px;border:1px solid #0004}
+#st{color:var(--mut)}
+#log{background:var(--log);color:var(--logfg);font:13px/1.35 ui-monospace,Menlo,Consolas,monospace;height:340px;overflow:auto;padding:8px;border-radius:8px;white-space:pre-wrap;word-break:break-all}
+#log .tx{color:#93c5fd}#log .sys{color:#fbbf24}
+label{color:var(--mut);font-size:13px}
+</style>
+</head>
+<body>
+<main>
+<h1>frame970 — консоль</h1>
+
+<div class="card">
+  <div class="row">
+    <button id="bConn" class="pri">Подключиться</button>
+    <button id="bDisc" disabled>Отключиться</button>
+    <span id="st">не подключено</span>
+  </div>
+  <div class="row"><small style="color:var(--mut)">Нужен Chrome/Edge с Web Bluetooth. Имя метки: n970-XXXXXX. Метка засыпает через ~10 с после включения, если к ней не подключиться — подключайтесь сразу после подачи питания или после пробуждения.</small></div>
+</div>
+
+<div class="card">
+  <h2>Светодиод</h2>
+  <div class="row">
+    <button data-c="11 01 00"><span class="dot" style="background:#e11"></span>Красный</button>
+    <button data-c="11 02 00"><span class="dot" style="background:#1b1"></span>Зелёный</button>
+    <button data-c="11 03 00"><span class="dot" style="background:#26f"></span>Синий</button>
+    <button data-c="11 01 02">Крас. выкл</button>
+    <button data-c="11 02 02">Зел. выкл</button>
+    <button data-c="11 03 02">Син. выкл</button>
+  </div>
+  <div class="row"><small style="color:var(--mut)">Включается на ~20 с, на это время сон отключён.</small></div>
+</div>
+
+<div class="card">
+  <h2>NFC (FM11NT083V)</h2>
+  <div class="row">
+    <button data-c="20">Скан I²C (20)</button>
+    <button data-c="24">Следить за PC4 (24, 20 с)</button>
+  </div>
+  <div class="row">
+    <label>адрес (hex)</label><input id="nAddr" value="0000" maxlength="4">
+    <label>байт</label><input id="nLen" type="number" min="1" max="16" value="16">
+    <button id="bNfcRead">Прочитать (21)</button>
+  </div>
+  <div class="row"><small style="color:var(--mut)">Во время «Следить за PC4» поднесите телефон/карту к метке.</small></div>
+</div>
+
+<div class="card">
+  <h2>Питание</h2>
+  <div class="row">
+    <button data-c="02">Статус (02)</button>
+    <label>глубокий сон, с</label><input id="sSec" type="number" min="1" max="255" value="10">
+    <button id="bSleep">Уснуть (01)</button>
+  </div>
+  <div class="row">
+    <label>авто-сон, с</label><input id="aSec" type="number" min="0" max="255" value="20">
+    <button id="bAuto">Задать (04)</button>
+    <button data-c="04 00">Отключить авто-сон</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Произвольная команда</h2>
+  <div class="row">
+    <input id="raw" class="wide" placeholder="hex, напр. 11 01 00">
+    <button id="bRaw">Отправить</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Лог</h2>
+  <div id="log"></div>
+  <div class="row" style="margin-top:8px">
+    <button id="bCopy">Копировать</button>
+    <button id="bSave">Скачать .txt</button>
+    <button id="bClear">Очистить</button>
+  </div>
+</div>
+</main>
+
+<script>
+const SVC = 0x2446, CHR = 0x2446;
+let dev = null, chr = null, buf = "";
+const $ = id => document.getElementById(id);
+const logEl = $("log");
+let plain = "";
+
+function ts(){ const d = new Date(); return d.toTimeString().slice(0,8) + "." + String(d.getMilliseconds()).padStart(3,"0"); }
+function add(text, cls){
+  const line = ts() + "  " + text;
+  plain += line + "\n";
+  const s = document.createElement("div");
+  if (cls) s.className = cls;
+  s.textContent = line;
+  const stick = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 30;
+  logEl.appendChild(s);
+  if (stick) logEl.scrollTop = logEl.scrollHeight;
+}
+function setState(on, txt){
+  $("st").textContent = txt;
+  $("bConn").disabled = on;
+  $("bDisc").disabled = !on;
+  document.querySelectorAll("[data-c],#bNfcRead,#bSleep,#bAuto,#bRaw").forEach(b => b.disabled = !on);
+}
+setState(false, "не подключено");
+
+function onNotify(ev){
+  const v = ev.target.value;
+  const bytes = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+  for (const b of bytes){
+    if (b === 10){ if (buf.length) add(buf); buf = ""; }
+    else if (b === 13) {}
+    else if (b >= 32 && b < 127) buf += String.fromCharCode(b);
+    else buf += "\\x" + b.toString(16).padStart(2,"0");
+  }
+}
+
+async function connect(){
+  if (!navigator.bluetooth){ add("Web Bluetooth недоступен в этом браузере", "sys"); return; }
+  try{
+    dev = await navigator.bluetooth.requestDevice({
+      filters:[{namePrefix:"n970-"}],
+      optionalServices:[SVC]
+    });
+    dev.addEventListener("gattserverdisconnected", () => {
+      if (buf.length){ add(buf); buf = ""; }
+      add("— связь потеряна —", "sys");
+      setState(false, "не подключено");
+    });
+    setState(false, "подключение…");
+    const srv = await dev.gatt.connect();
+    const svc = await srv.getPrimaryService(SVC);
+    chr = await svc.getCharacteristic(CHR);
+    chr.addEventListener("characteristicvaluechanged", onNotify);
+    await chr.startNotifications();
+    setState(true, "подключено: " + dev.name);
+    add("— подключено к " + dev.name + " —", "sys");
+  }catch(e){
+    add("ошибка: " + e.message, "sys");
+    setState(false, "не подключено");
+  }
+}
+
+function parseHex(s){
+  const t = s.replace(/[^0-9a-fA-F]/g, "");
+  if (!t.length || t.length % 2) throw new Error("нужно чётное число hex-цифр");
+  const out = [];
+  for (let i = 0; i < t.length; i += 2) out.push(parseInt(t.substr(i,2), 16));
+  if (out.length > 20) throw new Error("не больше 20 байт");
+  return Uint8Array.from(out);
+}
+const hx = a => Array.from(a).map(b => b.toString(16).padStart(2,"0")).join(" ");
+const h2 = n => (n & 255).toString(16).padStart(2,"0");
+
+async function send(s){
+  if (!chr){ add("нет соединения", "sys"); return; }
+  try{
+    const a = typeof s === "string" ? parseHex(s) : s;
+    add("→ " + hx(a), "tx");
+    if (chr.writeValueWithoutResponse) await chr.writeValueWithoutResponse(a);
+    else await chr.writeValue(a);
+  }catch(e){ add("ошибка отправки: " + e.message, "sys"); }
+}
+
+$("bConn").onclick = connect;
+$("bDisc").onclick = () => { if (dev && dev.gatt.connected) dev.gatt.disconnect(); };
+document.querySelectorAll("[data-c]").forEach(b => b.onclick = () => send(b.dataset.c));
+$("bNfcRead").onclick = () => {
+  const addr = parseInt($("nAddr").value || "0", 16) & 0xFFFF;
+  const n = Math.max(1, Math.min(16, +$("nLen").value || 1));
+  send(`21 ${h2(addr >> 8)} ${h2(addr)} ${h2(n)}`);
+};
+$("bSleep").onclick = () => send("01 " + h2(+$("sSec").value || 10));
+$("bAuto").onclick = () => send("04 " + h2(+$("aSec").value || 0));
+$("bRaw").onclick = () => send($("raw").value);
+$("raw").addEventListener("keydown", e => { if (e.key === "Enter") $("bRaw").click(); });
+
+$("bClear").onclick = () => { logEl.textContent = ""; plain = ""; };
+$("bCopy").onclick = async () => {
+  try{ await navigator.clipboard.writeText(plain); add("лог скопирован", "sys"); }
+  catch(e){ add("не удалось скопировать: " + e.message, "sys"); }
+};
+$("bSave").onclick = () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([plain], {type:"text/plain"}));
+  a.download = "n970-log-" + new Date().toISOString().replace(/[:.]/g,"-") + ".txt";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
