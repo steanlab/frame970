@@ -153,11 +153,11 @@ label{color:var(--mut);font-size:13px}
     <button class="nc" id="bOdSet">Записать в метку (4D)</button>
   </div>
   <div class="row">
-    <label>имя метки</label><input id="devName" maxlength="8" placeholder="до 8 символов" style="width:130px">
+    <label>имя метки</label><b>OD</b><input id="devName" maxlength="6" placeholder="до 6 символов (вместо MAC)" style="width:170px">
     <button class="nc" id="bNameSet">Задать</button>
     <button class="nc" id="bNameDef">Сбросить (OD + MAC)</button>
   </div>
-  <div class="row"><small style="color:var(--mut)">Имя до 8 латинских символов, цифр и знаков. Оно видно в списке устройств и при сканировании. Клиенты OpenDisplay ищут метки по данным производителя, а не по имени, но веб-загрузчику, который ищет «OD…», может понадобиться имя, начинающееся с OD.</small></div>
+  <div class="row"><small style="color:var(--mut)">Имя всегда начинается с OD (его ищут клиенты OpenDisplay), а вместо шести цифр MAC можно задать свой хвост до 6 латинских символов, цифр и знаков, например OD-KUHNYA. Он виден в списке устройств и при сканировании. Пустое поле + «Сбросить» вернёт OD + MAC.</small></div>
   <div class="row">
     <label>чанк</label><input id="odChunk" type="number" min="10" max="230" value="230" style="width:70px"><label>байт</label>
     <button class="nc pri" id="bOdUp" disabled>Загрузить по OpenDisplay</button>
@@ -219,6 +219,22 @@ label{color:var(--mut);font-size:13px}
     <button id="bAuto">Задать (04)</button>
     <button data-c="04 00">Отключить авто-сон</button>
   </div>
+</div>
+
+<div class="card">
+  <h2>Система</h2>
+  <div class="row">
+    <label>мощность радио</label>
+    <select id="txIdx"><option value="0">+10 дБм (дальше, больше ток)</option><option value="1">+7 дБм</option><option value="2" selected>+3 дБм (по умолчанию)</option><option value="3">0 дБм</option><option value="4">−5 дБм</option><option value="5">−11 дБм</option><option value="6">−19 дБм (только рядом)</option></select>
+    <button class="nc" id="bTx">Задать (4F 01)</button>
+  </div>
+  <div class="row">
+    <label><input type="checkbox" id="wdOn" checked> сторожевой таймер (15 с)</label>
+    <button class="nc" id="bWd">Применить (4F 02)</button>
+    <button class="nc" id="bSys">Показать (4F 03)</button>
+    <button class="nc" id="bReboot">Перезагрузить метку (4F A5)</button>
+  </div>
+  <div class="row"><small style="color:var(--mut)">Мощность и сторожевой таймер хранятся в метке. Если связь на расстоянии пропадает, поднимите мощность; для работы рядом её можно снизить ради батареи. Сторожевой таймер перезапускает метку, если прошивка зависла дольше 15 с. «Статус (02)» показывает текущие значения.</small></div>
 </div>
 
 <div class="card">
@@ -728,7 +744,7 @@ function odShowCfg(d){                       // outer packet: len16 version, pac
     if (!n) { parts.push("пакет " + id + "?"); break; }
     if (id === 32){
       const q = d.subarray(p + 2), W = q[4] | (q[5] << 8), H = q[6] | (q[7] << 8);
-      parts.push("дисплей " + W + "×" + H + ", схема цветов " + q[22] + ", поворот " + q[14] + ", режимы передачи 0x" + q[23].toString(16));
+      parts.push("дисплей " + W + "×" + H + ", схема цветов " + q[21] + ", поворот " + q[14] + ", режимы передачи 0x" + q[22].toString(16));
     } else parts.push(names[id] || ("пакет " + id));
     p += 2 + n;
   }
@@ -739,10 +755,14 @@ $("bOdCfg").onclick = () => send("00 40");
 $("bOdMsd").onclick = () => send("00 44");
 $("bNameSet").onclick = () => {
   const t = $("devName").value.trim();
-  if (!/^[\x20-\x7e]{1,8}$/.test(t)){ add("имя: 1–8 символов ASCII", "sys"); return; }
+  if (!/^[\x20-\x7e]{1,6}$/.test(t)){ add("имя: 1–6 символов ASCII после OD", "sys"); return; }
   send(Uint8Array.from([0x4e, ...Array.from(t).map(c => c.charCodeAt(0))]));
 };
 $("bNameDef").onclick = () => send("4e");
+$("bTx").onclick = () => send("4f 01 " + h2(+$("txIdx").value));
+$("bWd").onclick = () => send("4f 02 " + ($("wdOn").checked ? "01" : "00"));
+$("bSys").onclick = () => send("4f 03");
+$("bReboot").onclick = () => { if (confirm("Перезагрузить метку? Связь прервётся.")) send("4f a5"); };
 $("bOdSet").onclick = () => send("4d " + h2(+$("odMode").value) + " " + h2(+$("odSlot").value));
 async function odUpload(data){
   upBusy = true; refreshUp();
