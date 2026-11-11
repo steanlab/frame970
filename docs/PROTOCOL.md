@@ -1,10 +1,25 @@
-# frame970 BLE protocol (firmware 5b)
+# frame970 BLE protocol (firmware 0.9.0, protocol level 1)
+
+Repo path: `steanlab/frame970` → `docs/PROTOCOL.md`
 
 Service `0x2446`, one characteristic `0x2446` (write, write without response, notify).
-Device name `n970-AABBCC`. The first byte of a write is the command. The tag answers with text lines
+Device name `OD-xxxx` (see command `4E`). The first byte of a write is the command. The tag answers with text lines
 (`\n` terminated, split into 20-byte notifications); the web page joins them.
 
-This is a working protocol of the project. OpenDisplay compatibility (firmware 5j) works on top of it, see the last section.
+This is the working protocol of the project, not a standard. OpenDisplay compatibility works on top of it, see the last section.
+
+## Versions and the protocol level
+
+Command `02` (status) answers with a line that starts like this:
+
+```
+STATUS fw 0.9.0 proto=1 boots=12 dw=3 src=0x00 auto=0s up=45s tx=2 wd=1 v=3012
+```
+
+`fw` is the firmware version (also reported to OpenDisplay clients as `n970-0.9.0`), `proto` is the **protocol level**: an integer that is raised whenever a change would break the control page
+(a command changes meaning or a reply changes format). Adding new commands does not raise it. Firmware older than 0.9 has no `proto` field and counts as level 0.
+The control page knows the level it was written for (`PAGE_PROTO`) and shows a warning banner when the tag reports a different one; the footer shows both versions.
+The remaining fields: boots since the battery was inserted, deep-sleep wake-ups, wake-up source register, auto-sleep seconds, uptime, radio power index, watchdog, supply voltage in mV.
 
 ## Slide storage
 
@@ -55,20 +70,20 @@ off the tag stays awake and connectable. The settings are an append-only log of 
 
 `01 nn` deep sleep nn s, `02` status, `04 nn` auto-sleep, `10 11` LED, `20..2B` NFC discovery, `30..33` panel test (see the page), `34 mode` clean the panel against ghost images (1 = white, 2 = black then white, about 1 to 2 minutes).
 
-## OpenDisplay compatibility (firmware 5j)
+## OpenDisplay compatibility
 
 Same service and characteristic `0x2446`. OpenDisplay commands are a 2-byte big-endian opcode with high byte `00`;
 ours start with `01`..`4D`, so the two never clash. Replies are notifications `00 cmd ...` (ok) or `FF cmd ...` (error).
 While an OpenDisplay client is talking (any write that starts with `00`) the firmware sends no text log lines; a write that does not
 start with `00` switches the text log back on.
 
-The tag advertises manufacturer data with company id `0x2446` (14 bytes, zeros at the moment: no battery, temperature or button data)
+The tag advertises manufacturer data with company id `0x2446` (14 bytes: the supply voltage in mV in the last two bytes, the rest zeros; no temperature or button data)
 the complete local name in the same packet (Chrome only matches names from the first advertisement packet) and, in the scan response, the service `0x2446` and the name again.
 The default name is `OD-` + the last two MAC bytes (`OD-96C1`). Eight characters is all that fits next to the flags and the manufacturer data in the advertisement. `4E chars` replaces the four MAC digits by 1..5 printable ASCII characters (the name stays `OD-` + tail, for example `OD-Milan`; kept in flash sector 0xF6000, used at once), `4E` alone restores the default.
 
 | opcode | meaning | reply |
 |---|---|---|
-| `00 43` | firmware version | `00 43 major minor len text`, here 1 0 7 `n970-5j` |
+| `00 43` | firmware version | `00 43 major minor len text`, here major 1, minor 0, text `n970-0.9.0` (length 10) |
 | `00 40` | read configuration | chunks `00 40 nnnn data`; chunk 0 is `00 40 0000 total16 data`, up to 96 data bytes per chunk |
 | `00 44` | manufacturer data | `00 44` + `46 24` + 14 bytes: dynamic data (11 bytes, zeros), a temperature byte (not filled), supply voltage in mV, little endian (bytes 14..15 of the record, as in the OpenDisplay configuration description); the advertisement carries the same bytes and is refreshed when the voltage changes by more than 20 mV |
 | `00 50` | authenticate | `00 50 03` (encryption is not configured) |
@@ -90,3 +105,8 @@ chosen by `4D mode slot`: mode bit 0 reverses the order of the lines, bit 1 the 
 The `rotation` field of the configuration reports 1 for mode 1 and 3 for mode 2, the direction a client has to turn a picture before it sends it;
 which of the two a given client expects has to be tried (change it with `4D`, then read the configuration again).
 The stream replaces the content of the chosen slot and is drawn right after `00 72`.
+
+## Security
+
+There is no pairing, no PIN and no encryption: anyone within Bluetooth range can read the status, change the settings, upload a picture and reboot the tag. OpenDisplay authentication is answered with "not configured".
+Do not rely on the tag for anything where this matters. A PIN is not implemented.

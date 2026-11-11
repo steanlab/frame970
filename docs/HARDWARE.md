@@ -1,12 +1,16 @@
 # Hanshow Nebular Pro 970Q-N - hardware notes
 
+Repo path: `steanlab/frame970` → `docs/HARDWARE.md`
+
 Electronic shelf label with a 9.7" four-colour e-paper panel. These notes collect what is known about the board and the panel interface, so that
 other developers can write their own firmware or drive the panel from another MCU. Everything here was found by reading the stock firmware, by
 logic-level sniffing, and by driving the panel from a Raspberry Pi Pico. Items are marked **verified on hardware**, **from firmware analysis**
 or **unknown**.
 
-No per-tag data is published here: no UID / IDs and no factory record contents. The 14 waveform records of one tag are published separately in
-`waveforms/waveforms_970q-n.md` and `waveforms/waveforms_970q-n.bin`; see "Where the waveforms come from" for how to read your own tag's tables.
+No per-tag data is published here: no UID / IDs, no factory record contents and no waveform tables (they are factory data of each tag; see "Where the waveforms come from" for the format and for how to read your own).
+
+**Certainty labels used below:** *verified* = checked on hardware (pin scan, logic capture, Pico drive, our firmware on a tag); *firmware analysis* = read from the stock firmware image, not tested separately;
+*our firmware* = works in our own firmware on a tag; *unknown* = not found out.
 
 ## Overview
 
@@ -21,6 +25,44 @@ No per-tag data is published here: no UID / IDs and no factory record contents. 
 | Stock panel type | model code 0x22 (34, "driver 34" in the strings), type index 10 |
 
 The panel controller IC itself is not identified; the command set below is what the stock firmware sends for model 0x22.
+
+## Other board facts
+
+| Item | Value | Certainty |
+|---|---|---|
+| Battery | one 3.0 V lithium primary cell, EVE brand, 1450 mAh (read from the label of the cell in the author's tag) | label read from a photo |
+| Supply thresholds used by our firmware | normal above 2.7 V, "low" below 2.7 V, "critical" below 2.5 V; the lowest voltage during a panel refresh is recorded | our choice, ADC not calibrated (about 5 %) |
+| RGB LED | red PB4, green PD3, blue PA7; a pin low = that colour on (pins are released when off, so the LED costs nothing in sleep) | our firmware (all three colours seen) |
+| Debug UART | TXD PB1, RXD PA0, 115200 8N1 (3.3 V). Our firmware prints the same text lines here that go to the page; the stock firmware has log strings of its own, the UART use was not captured separately | our firmware (uart.c) |
+| NFC | Fudan FM11NT083V. I2C (bit-banged in the stock firmware): SDA PC0, SCL PC1, 8-bit address 0xAE (7-bit 0x57); chip-select/enable PC6; IRQ / field detect PC4. The stock init writes the volatile mask registers 0xFFFA..0xFFFD = E6, 0F, 18, 03 and the configuration cells 0x03B5 = A4 and 0x03B2 = 03 | firmware analysis; our firmware only probes the chip (page cards "NFC ..."), it does not use it yet |
+| Panel temperature sensor | inside the panel controller, read with `CMD 41`/`CMD 40` (see below) | verified |
+| Chip temperature sensor | the TLSR8258 internal sensor; only the raw reading is available (no documented conversion) | our firmware |
+| Supply voltage measurement | ADC on the VBAT input (1/8 prescaler, 1.2 V reference) | our firmware, uncalibrated |
+| Refresh time | about 21 s at 23 C, about 41 s at 17 to 19 C (the cooler the panel, the longer the waveform) | verified |
+| Sleep current | deep sleep with the 32 kHz timer running; not measured with an ammeter in this project | unknown |
+
+### External flash and the flash map
+
+The 1 MiB external SPI flash (GD25/Puya-type command set: JEDEC id `9F`, unique id `4B`, status registers) holds everything. It is memory-mapped at 0 by the chip's bootloader.
+
+| Address | What | Written by our firmware? |
+|---|---|---|
+| `0x00000`..`0x2FFFF` | application image (Telink image: bytes 8..11 `KNLT`, u32 at 0x18 = image length). Our image is 81 960 bytes | only by the programmer |
+| `0x30000` + n x `0x28000` (n = 0..3) | picture slot n: raw frame of 161 280 bytes, 256-byte header at slot + `0x27F00` written only after the CRC check | yes |
+| `0xD0000`..`0xF5FFF` | unused by our firmware | no |
+| `0xF6000` | device-name log (16-byte records `0xA7`) | yes |
+| `0xF7000` | settings log (16-byte records `0xA6`: slideshow, OpenDisplay mode and slot, radio power, watchdog, LED mode, check byte) | yes |
+| `0xF8000`..`0xFAFFF` | **factory panel-waveform block** (see below): never written | no |
+| `0xFE000` | factory record of the tag (panel type, pin selection and so on): never written | no |
+| `0xFF000` | Telink SDK sectors: Bluetooth MAC address and calibration data (moved here in the SDK configuration) | by the SDK only |
+
+Flash block protection: before every write our firmware reads status register 1, remembers the protection bits (bits 2..4) and clears them, and restores them afterwards. Only the picture slots, the name log and the settings log are ever erased or written.
+Records in the two logs are appended.
+
+## Programming access (what a programmer needs)
+
+The chip can be programmed through Telink's single-wire debug interface (SWS) or by reading/writing the external flash directly with an SPI programmer.
+The author reads the stock flash with an external SPI-flash programmer. The soldering points are not documented here yet. Always take two reads and compare.
 
 ## Pins (from firmware analysis)
 
@@ -130,7 +172,7 @@ erase or overwrite it when you flash your own firmware, and keep a full backup o
   the short waveform record.
 - Records start at `0xF8188`, stride `0x21F` bytes (543). Each record is **7 parameter bytes + 528 waveform bytes + 8 more bytes**
   (the record length 0x21F also appears in the header table). The 8 trailing bytes are `06 00 06 04 0F 8B 93 C1` in every record; the last four are the data of `CMD 06`.
-  The records themselves are in `waveforms/waveforms_970q-n.md` / `.bin`.
+  The records are specific to the panel lot of each tag and are not published here.
 - Record order: temperature band 0 long, band 0 short, band 1 long, ... band 6 short (14 records).
 - The meaning of the individual waveform bytes is not decoded; the panel accepts the 528 bytes unchanged in `CMD 20` (after the 7 parameter bytes).
 - The rest of the block holds other factory data of the tag. Treat it as private: it is specific to each tag.
@@ -185,7 +227,7 @@ Other `CMD 62` data sets that appear in the stock init (by panel geometry): 960x
 | File | Purpose |
 |---|---|
 | `tools/epd_sniffer.py` | passive logger of the tag-to-panel traffic (Pico, PIO) |
-| `tools/n970_pico_drive.py` | draw a picture on the panel from the Pico (needs `waveforms_970q-n.bin` and the two picture files on the Pico) |
+| `tools/n970_pico_drive.py` | draw a picture on the panel from the Pico (needs your own `waveforms_970q-n.bin` from `extract_waveforms.py`, and the two picture files, on the Pico) |
 | `tools/n970_otp_dump.py` | read the panel's 6144-byte block (needs `n970_pico_drive.py` next to it) |
 | `tools/n970_frame.py` | PNG (672 x 960) -> `picture_pass0.bin` / `picture_pass1.bin` |
 | `tools/extract_waveforms.py` | find the waveform block in a flash dump and write the 14 records |
@@ -196,12 +238,15 @@ takes over. Quick start for a picture:
 
 ```
 python3 tools/n970_frame.py my_portrait_672x960.png picture      # writes picture_pass0.bin, picture_pass1.bin
+python3 tools/extract_waveforms.py my_flash_dump.bin waveforms_970q-n.bin   # writes waveforms_970q-n.bin from your own dump
 # upload picture_pass0.bin, picture_pass1.bin, waveforms_970q-n.bin and n970_pico_drive.py to the Pico, run n970_pico_drive.py
 ```
 
 ## Open questions
 
-- Confirm CK = PD7 and SDA = PB6 with a real frame drawn by our own firmware (the pin scan only shows which pin is wired to which line).
 - The panel driver IC, and the meaning of the waveform bytes (a custom, faster waveform would need this).
-- How the NFC chip (FM11NT083V) is wired to the MCU and what the stock firmware does with it.
 - The format of the panel's own 6144-byte block.
+- What the NFC chip does for the stock firmware after the init (the pins and addresses are known; a tap trigger is not implemented in our firmware).
+- Real deep-sleep current and battery life (not measured).
+- Calibration of the supply and chip temperature readings.
+- Other Nebular tags (437Q-N): same family and chip, other panel size; pins and waveform block are expected to differ in details.

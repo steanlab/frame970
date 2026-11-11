@@ -31,6 +31,13 @@ progress{width:100%;height:10px}
 #log{background:var(--log);color:var(--logfg);font:13px/1.35 ui-monospace,Menlo,Consolas,monospace;height:340px;overflow:auto;padding:8px;border-radius:8px;white-space:pre-wrap;word-break:break-all}
 #log .tx{color:#93c5fd}#log .sys{color:#fbbf24}
 label{color:var(--mut);font-size:13px}
+details.card>summary{cursor:pointer;font-weight:600;font-size:14px;list-style-position:inside}
+details.card[open]>summary{margin-bottom:8px}
+details.card .card{border-style:dashed}
+button.danger{border-color:#d33;color:#d33}
+.warn{margin-top:8px;padding:8px 10px;border-radius:8px;background:#fde8e8;color:#8a1f1f;border:1px solid #d33;font-size:13px}
+@media (prefers-color-scheme:dark){.warn{background:#3b1b1b;color:#fecaca}}
+.warn[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -45,19 +52,7 @@ label{color:var(--mut);font-size:13px}
     <span id="st">не подключено</span>
   </div>
   <div class="row"><small style="color:var(--mut)">Нужен Chrome/Edge с Web Bluetooth. Имя метки: OD- и четыре цифры MAC (OD-96C1), или своё (см. карточку OpenDisplay); если метки нет в списке, отметьте «показать все устройства». Метка засыпает через ~10 с после включения, если к ней не подключиться — подключайтесь сразу после подачи питания или после пробуждения.</small></div>
-</div>
-
-<div class="card">
-  <h2>Светодиод</h2>
-  <div class="row">
-    <button data-c="11 01 00"><span class="dot" style="background:#e11"></span>Красный</button>
-    <button data-c="11 02 00"><span class="dot" style="background:#1b1"></span>Зелёный</button>
-    <button data-c="11 03 00"><span class="dot" style="background:#26f"></span>Синий</button>
-    <button data-c="11 01 02">Крас. выкл</button>
-    <button data-c="11 02 02">Зел. выкл</button>
-    <button data-c="11 03 02">Син. выкл</button>
-  </div>
-  <div class="row"><small style="color:var(--mut)">Включается на ~20 с, на это время сон отключён.</small></div>
+  <div id="fwWarn" class="warn" hidden></div>
 </div>
 
 <div class="card">
@@ -139,6 +134,86 @@ label{color:var(--mut);font-size:13px}
 
 <div class="card">
   <h2>OpenDisplay</h2>
+  <div class="row">
+    <label>имя метки</label><b>OD-</b><input id="devName" maxlength="5" placeholder="до 5 символов" style="width:130px">
+    <button class="nc" id="bNameSet">Задать</button>
+    <button class="nc" id="bNameDef">Сбросить (OD-xxxx)</button>
+  </div>
+  <div class="row"><small style="color:var(--mut)">Имя всегда выглядит как OD-… (так метку находят клиенты OpenDisplay). Вместо четырёх цифр MAC можно задать свой хвост до 5 латинских символов, цифр и знаков, например OD-Milan. Он виден в списке устройств и при сканировании. «Сбросить» возвращает OD- и две последние пары цифр MAC.</small></div>
+  <div class="row">
+    <button class="nc pri" id="bOdUp" disabled>Загрузить по OpenDisplay</button>
+  </div>
+  <div class="row"><progress id="odProg" value="0" max="100"></progress></div>
+  <div class="row"><small id="odInfo" style="color:var(--mut)">Загружается картинка, подготовленная выше (та же, что идёт в слот).</small></div>
+</div>
+
+<div class="card">
+  <h2>Состояние</h2>
+  <div class="row">
+    <span>Питание: <b id="stV">—</b></span>
+    <span>под нагрузкой (обновление панели): <b id="stVL">—</b></span>
+    <span id="stBat"></span>
+  </div>
+  <div class="row">
+    <span>Температура панели: <b id="stT">—</b></span>
+    <span>Датчик чипа (сырое значение): <b id="stTS">—</b></span>
+    <span id="stTA" style="color:var(--mut)"></span>
+  </div>
+  <div class="row">
+    <button class="nc" id="bStat">Обновить (4F 03)</button>
+    <button class="nc" id="bStatT">Измерить температуру панели (32)</button>
+    <label>светодиод</label>
+    <select id="ledMode"><option value="2" selected>все события</option><option value="1">только загрузка, ошибки, низкий заряд</option><option value="0">выключен</option></select>
+    <button class="nc" id="bLed">Задать (4F 04)</button>
+  </div>
+  <div class="row"><small style="color:var(--mut)">Питание: литиевый элемент 3 В; норма выше 2,7 В, ниже 2,7 В «низкое», ниже 2,5 В «критическое» (красные вспышки). Измерение без калибровки, точность около ±5 %. Температуру панели метка читает при каждом обновлении, отдельное измерение включает панель примерно на секунду. Значения обновляются раз в 30 с, пока вы подключены.</small></div>
+</div>
+
+<div class="card">
+  <h2>Лог</h2>
+  <div id="log"></div>
+  <div class="row" style="margin-top:8px">
+    <button id="bCopy">Копировать</button>
+    <button id="bSave">Скачать .txt</button>
+    <button id="bClear">Очистить</button>
+  </div>
+</div>
+
+<details class="card" id="adv">
+  <summary>Дополнительно</summary>
+  <div class="row"><small style="color:var(--mut)">Дополнительные настройки: питание, радио, сторожевой таймер, команды OpenDisplay. Менять их обычно не нужно.</small></div>
+<div class="card">
+  <h2>Питание</h2>
+  <div class="row">
+    <button data-c="02">Статус (02)</button>
+    <label>глубокий сон, с</label><input id="sSec" type="number" min="1" max="255" value="10">
+    <button id="bSleep">Уснуть (01)</button>
+  </div>
+  <div class="row">
+    <label>авто-сон, с</label><input id="aSec" type="number" min="0" max="255" value="20">
+    <button id="bAuto">Задать (04)</button>
+    <button data-c="04 00">Отключить авто-сон</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Система</h2>
+  <div class="row">
+    <label>мощность радио</label>
+    <select id="txIdx"><option value="0">+10 дБм (дальше, больше ток)</option><option value="1">+7 дБм</option><option value="2" selected>+3 дБм (по умолчанию)</option><option value="3">0 дБм</option><option value="4">−5 дБм</option><option value="5">−11 дБм</option><option value="6">−19 дБм (только рядом)</option></select>
+    <button class="nc" id="bTx">Задать (4F 01)</button>
+  </div>
+  <div class="row">
+    <label><input type="checkbox" id="wdOn" checked> сторожевой таймер (15 с)</label>
+    <button class="nc" id="bWd">Применить (4F 02)</button>
+    <button class="nc" id="bSys">Показать (4F 03)</button>
+    <button class="nc" id="bReboot">Перезагрузить метку (4F A5)</button>
+  </div>
+  <div class="row"><small style="color:var(--mut)">Мощность и сторожевой таймер хранятся в метке. Если связь на расстоянии пропадает, поднимите мощность; для работы рядом её можно снизить ради батареи. Сторожевой таймер перезапускает метку, если прошивка зависла дольше 15 с. «Статус (02)» показывает текущие значения.</small></div>
+</div>
+
+<div class="card">
+  <h2>Команды OpenDisplay</h2>
   <div class="row"><small style="color:var(--mut)">Прошивка понимает команды OpenDisplay (двухбайтовые, начинаются с 00). Здесь можно проверить их без Home Assistant: версия, конфигурация и загрузка текущей картинки прямой записью 0070 / 0071 / 0072. Картинка сохраняется в выбранный слот и сразу показывается.</small></div>
   <div class="row">
     <button class="nc" id="bOdVer">Версия (0043)</button>
@@ -153,17 +228,25 @@ label{color:var(--mut);font-size:13px}
     <button class="nc" id="bOdSet">Записать в метку (4D)</button>
   </div>
   <div class="row">
-    <label>имя метки</label><b>OD-</b><input id="devName" maxlength="5" placeholder="до 5 символов" style="width:130px">
-    <button class="nc" id="bNameSet">Задать</button>
-    <button class="nc" id="bNameDef">Сбросить (OD-xxxx)</button>
-  </div>
-  <div class="row"><small style="color:var(--mut)">Имя всегда выглядит как OD-… (так метку находят клиенты OpenDisplay). Вместо четырёх цифр MAC можно задать свой хвост до 5 латинских символов, цифр и знаков, например OD-Milan. Он виден в списке устройств и при сканировании. «Сбросить» возвращает OD- и две последние пары цифр MAC.</small></div>
-  <div class="row">
     <label>чанк</label><input id="odChunk" type="number" min="10" max="230" value="230" style="width:70px"><label>байт</label>
-    <button class="nc pri" id="bOdUp" disabled>Загрузить по OpenDisplay</button>
   </div>
-  <div class="row"><progress id="odProg" value="0" max="100"></progress></div>
-  <div class="row"><small id="odInfo" style="color:var(--mut)">Загружается картинка, подготовленная выше (та же, что идёт в слот).</small></div>
+</div>
+</details>
+
+<details class="card" id="dev">
+  <summary>Для разработчиков</summary>
+  <div class="row"><small style="color:var(--mut)">Отладочные команды для разработки прошивки и исследования железа. Некоторые из них пишут во внутреннюю память метки. Обычному пользователю они не нужны.</small></div>
+<div class="card">
+  <h2>Светодиод</h2>
+  <div class="row">
+    <button data-c="11 01 00"><span class="dot" style="background:#e11"></span>Красный</button>
+    <button data-c="11 02 00"><span class="dot" style="background:#1b1"></span>Зелёный</button>
+    <button data-c="11 03 00"><span class="dot" style="background:#26f"></span>Синий</button>
+    <button data-c="11 01 02">Крас. выкл</button>
+    <button data-c="11 02 02">Зел. выкл</button>
+    <button data-c="11 03 02">Син. выкл</button>
+  </div>
+  <div class="row"><small style="color:var(--mut)">Включается на ~20 с, на это время сон отключён.</small></div>
 </div>
 
 <div class="card">
@@ -190,9 +273,9 @@ label{color:var(--mut);font-size:13px}
   <div class="row">
     <button data-c="26">Регистры чипа (26)</button>
     <button data-c="27">Детектор + опрос флагов (27, 60 с)</button>
-    <button data-c="28">Записать настройку как в стоке (28)</button>
-    <button data-c="29">Тест записи EEPROM (29)</button>
-    <button data-c="2A">Тест записи регистров (2A)</button>
+    <button data-c="28" data-danger="1" class="danger">⚠ Записать настройку как в стоке (28)</button>
+    <button data-c="29" data-danger="1" class="danger">⚠ Тест записи EEPROM (29)</button>
+    <button data-c="2A" data-danger="1" class="danger">⚠ Тест записи регистров (2A)</button>
   </div>
   <div class="row">
     <label>PC6 при обмене с чипом:</label>
@@ -205,58 +288,7 @@ label{color:var(--mut);font-size:13px}
     <button id="bNfcRead">Прочитать (21)</button>
   </div>
   <div class="row"><small style="color:var(--mut)">Во время слежения приложите телефон к метке и считайте её (например, NFC Tools): ждём, какой пин изменится.</small></div>
-</div>
-
-<div class="card">
-  <h2>Питание</h2>
-  <div class="row">
-    <button data-c="02">Статус (02)</button>
-    <label>глубокий сон, с</label><input id="sSec" type="number" min="1" max="255" value="10">
-    <button id="bSleep">Уснуть (01)</button>
-  </div>
-  <div class="row">
-    <label>авто-сон, с</label><input id="aSec" type="number" min="0" max="255" value="20">
-    <button id="bAuto">Задать (04)</button>
-    <button data-c="04 00">Отключить авто-сон</button>
-  </div>
-</div>
-
-<div class="card">
-  <h2>Состояние</h2>
-  <div class="row">
-    <span>Питание: <b id="stV">—</b></span>
-    <span>под нагрузкой (обновление панели): <b id="stVL">—</b></span>
-    <span id="stBat"></span>
-  </div>
-  <div class="row">
-    <span>Температура панели: <b id="stT">—</b></span>
-    <span>Датчик чипа (сырое значение): <b id="stTS">—</b></span>
-    <span id="stTA" style="color:var(--mut)"></span>
-  </div>
-  <div class="row">
-    <button class="nc" id="bStat">Обновить (4F 03)</button>
-    <button class="nc" id="bStatT">Измерить температуру панели (32)</button>
-    <label>светодиод</label>
-    <select id="ledMode"><option value="2" selected>все события</option><option value="1">только загрузка, ошибки, низкий заряд</option><option value="0">выключен</option></select>
-    <button class="nc" id="bLed">Задать (4F 04)</button>
-  </div>
-  <div class="row"><small style="color:var(--mut)">Питание: литиевый элемент 3 В; норма выше 2,7 В, ниже 2,7 В «низкое», ниже 2,5 В «критическое» (красные вспышки). Измерение без калибровки, точность около ±5 %. Температуру панели метка читает при каждом обновлении, отдельное измерение включает панель примерно на секунду. Значения обновляются раз в 30 с, пока вы подключены.</small></div>
-</div>
-
-<div class="card">
-  <h2>Система</h2>
-  <div class="row">
-    <label>мощность радио</label>
-    <select id="txIdx"><option value="0">+10 дБм (дальше, больше ток)</option><option value="1">+7 дБм</option><option value="2" selected>+3 дБм (по умолчанию)</option><option value="3">0 дБм</option><option value="4">−5 дБм</option><option value="5">−11 дБм</option><option value="6">−19 дБм (только рядом)</option></select>
-    <button class="nc" id="bTx">Задать (4F 01)</button>
-  </div>
-  <div class="row">
-    <label><input type="checkbox" id="wdOn" checked> сторожевой таймер (15 с)</label>
-    <button class="nc" id="bWd">Применить (4F 02)</button>
-    <button class="nc" id="bSys">Показать (4F 03)</button>
-    <button class="nc" id="bReboot">Перезагрузить метку (4F A5)</button>
-  </div>
-  <div class="row"><small style="color:var(--mut)">Мощность и сторожевой таймер хранятся в метке. Если связь на расстоянии пропадает, поднимите мощность; для работы рядом её можно снизить ради батареи. Сторожевой таймер перезапускает метку, если прошивка зависла дольше 15 с. «Статус (02)» показывает текущие значения.</small></div>
+  <div class="row"><small style="color:#d33">Кнопки с ⚠ пишут в постоянную память NFC-чипа метки. Неверное значение может сделать NFC неработающим. Нажимайте, только если понимаете, зачем.</small></div>
 </div>
 
 <div class="card">
@@ -266,16 +298,8 @@ label{color:var(--mut);font-size:13px}
     <button id="bRaw">Отправить</button>
   </div>
 </div>
-
-<div class="card">
-  <h2>Лог</h2>
-  <div id="log"></div>
-  <div class="row" style="margin-top:8px">
-    <button id="bCopy">Копировать</button>
-    <button id="bSave">Скачать .txt</button>
-    <button id="bClear">Очистить</button>
-  </div>
-</div>
+</details>
+<p id="ver" style="color:var(--mut);font-size:12px;text-align:center"></p>
 </main>
 
 <script>
@@ -387,9 +411,6 @@ const EN = {
 "Следить за всеми пинами (25, 20 с)": "Watch all pins (25, 20 s)",
 "Регистры чипа (26)": "Chip registers (26)",
 "Детектор + опрос флагов (27, 60 с)": "Detector + flag polling (27, 60 s)",
-"Записать настройку как в стоке (28)": "Write the setting as the stock firmware (28)",
-"Тест записи EEPROM (29)": "EEPROM write test (29)",
-"Тест записи регистров (2A)": "Register write test (2A)",
 "PC6 при обмене с чипом:": "PC6 during chip access:",
 "низкий (2B 00)": "low (2B 00)",
 "высокий (2B 01)": "high (2B 01)",
@@ -500,7 +521,27 @@ const EN = {
 "Принято за ": "Accepted in ",
 " с. Панель обновляется (до минуты)…": " s. The panel is refreshing (up to a minute)…",
 "обновление панели не уложилось в таймаут": "the panel refresh did not finish in time",
-"Готово: картинка загружена по OpenDisplay и показана.": "Done: the picture was uploaded via OpenDisplay and is shown."
+"Готово: картинка загружена по OpenDisplay и показана.": "Done: the picture was uploaded via OpenDisplay and is shown.",
+"⚠ Записать настройку как в стоке (28)": "⚠ Write the setting as the stock firmware (28)",
+"⚠ Тест записи EEPROM (29)": "⚠ EEPROM write test (29)",
+"⚠ Тест записи регистров (2A)": "⚠ Register write test (2A)",
+"Команды OpenDisplay": "OpenDisplay commands",
+"Дополнительно": "Advanced",
+"Дополнительные настройки: питание, радио, сторожевой таймер, команды OpenDisplay. Менять их обычно не нужно.": "Advanced settings: power, radio, watchdog, OpenDisplay commands. You normally do not need to change them.",
+"Для разработчиков": "For developers",
+"Отладочные команды для разработки прошивки и исследования железа. Некоторые из них пишут во внутреннюю память метки. Обычному пользователю они не нужны.": "Debug commands for firmware development and hardware research. Some of them write to the tag's internal memory. An ordinary user does not need them.",
+"Кнопки с ⚠ пишут в постоянную память NFC-чипа метки. Неверное значение может сделать NFC неработающим. Нажимайте, только если понимаете, зачем.": "Buttons marked ⚠ write to the persistent memory of the tag's NFC chip. A wrong value can leave NFC unusable. Press them only if you know why.",
+"Эта команда пишет в постоянную память NFC-чипа. Продолжить?": "This command writes to the persistent memory of the NFC chip. Continue?",
+"страница ": "page ",
+", уровень протокола ": ", protocol level ",
+" · прошивка метки ": " · tag firmware ",
+"Прошивка метки устарела (уровень протокола ": "The tag firmware is outdated (protocol level ",
+", странице нужен ": ", the page needs ",
+"). Обновите прошивку метки, иначе часть команд не будет работать.": "). Update the tag firmware, otherwise some commands will not work.",
+"Страница старше прошивки метки (уровень протокола ": "The page is older than the tag firmware (protocol level ",
+", странице известен ": ", the page knows ",
+"). Обновите страницу (Ctrl+F5 или закройте и откройте заново).": "). Reload the page (Ctrl+F5, or close and reopen it).",
+"Метка не сообщила версию прошивки (вероятно, старая прошивка). Обновите прошивку метки.": "The tag did not report its firmware version (probably an old firmware). Update the tag firmware."
 };
 const T = s => (LANG === "en" && EN[s] !== undefined) ? EN[s] : s;
 const I18N = [];
@@ -531,6 +572,7 @@ function setLang(l){
   try { localStorage.setItem("lang", l); } catch (e) {}
   i18nApply();
   if (typeof setState === "function") setState(...lastSt);
+  if (typeof renderFw === "function") renderFw();
   if (typeof lastSys !== "undefined" && lastSys) lineHook("SYS tx=" + lastSys[1] + " wd=" + lastSys[2] + " led=" + lastSys[3] + " v=" + lastSys[4] + " vl=" + lastSys[5] + " t=" + lastSys[6] + " ta=" + lastSys[7] + (lastSys[8] ? " vr=" + lastSys[8] + " ts=" + lastSys[9] : ""));
 }
 </script>
@@ -586,6 +628,7 @@ async function connect(){
     dev.addEventListener("gattserverdisconnected", () => {
       if (buf.length){ add(buf); buf = ""; }
       add(T("— связь потеряна —"), "sys");
+      fw = null; renderFw();
       setState(false, "не подключено");
     });
     setState(false, "подключение…");
@@ -596,6 +639,7 @@ async function connect(){
     await chr.startNotifications();
     setState(true, "подключено: ", dev.name);
     add(T("— подключено к ") + dev.name + " —", "sys");
+    fwCheck();
   }catch(e){
     add(T("ошибка: ") + e.message, "sys");
     setState(false, "не подключено");
@@ -625,7 +669,7 @@ async function send(s, strict){
 
 $("bConn").onclick = connect;
 $("bDisc").onclick = () => { if (dev && dev.gatt.connected) dev.gatt.disconnect(); };
-document.querySelectorAll("[data-c]").forEach(b => b.onclick = () => send(b.dataset.c));
+document.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { if (b.dataset.danger && !confirm(T("Эта команда пишет в постоянную память NFC-чипа. Продолжить?"))) return; send(b.dataset.c); });
 $("bNfcRead").onclick = () => {
   const addr = parseInt($("nAddr").value || "0", 16) & 0xFFFF;
   const n = Math.max(1, Math.min(16, +$("nLen").value || 1));
@@ -885,8 +929,28 @@ $("pal").onchange = () => { const m = $("pal").value === "1"; setPalette(m); try
 
 /* lines from the tag that start with "UP " are queued for the upload code */
 const upq = []; let upw = null;
+const PAGE_VER = "0.9.0-rc1", PAGE_PROTO = 1;     // protocol level this page needs from the tag (STATUS reports it); see PROTOCOL.md
+let fw = null, fwTimer = 0;                          // {ver, proto} from the tag's STATUS line
+function renderFw(){
+  const w = $("fwWarn"), v = $("ver");
+  v.textContent = T("страница ") + PAGE_VER + T(", уровень протокола ") + PAGE_PROTO + (fw ? T(" · прошивка метки ") + fw.ver + " (" + fw.proto + ")" : "");
+  let msg = "";
+  if (chr && dev && dev.gatt.connected){
+    if (fw && fw.proto < PAGE_PROTO) msg = T("Прошивка метки устарела (уровень протокола ") + fw.proto + T(", странице нужен ") + PAGE_PROTO + T("). Обновите прошивку метки, иначе часть команд не будет работать.");
+    else if (fw && fw.proto > PAGE_PROTO) msg = T("Страница старше прошивки метки (уровень протокола ") + fw.proto + T(", странице известен ") + PAGE_PROTO + T("). Обновите страницу (Ctrl+F5 или закройте и откройте заново).");
+    else if (!fw && fwTimer === -1) msg = T("Метка не сообщила версию прошивки (вероятно, старая прошивка). Обновите прошивку метки.");
+  }
+  w.textContent = msg; w.hidden = !msg;
+}
+function fwCheck(){
+  fw = null; fwTimer = 0; renderFw();
+  send("02").catch(() => {});
+  setTimeout(() => { if (!fw){ fwTimer = -1; renderFw(); } }, 4000);
+}
 let sysQuiet = 0, lastSys = null;
 function lineHook(t){
+  const st = /^STATUS fw (\S+)(?: proto=(\d+))?/.exec(t);
+  if (st){ fw = {ver: st[1], proto: st[2] ? +st[2] : 0}; renderFw(); }
   const sy = /^SYS tx=(\d+) wd=(\d+) led=(\d+) v=(\d+) vl=(\d+) t=(-?\d+) ta=(-?\d+)(?: vr=(-?\d+) ts=(-?\d+))?/.exec(t);
   if (sy){                       // supply, temperature, and the stored system settings
     $("txIdx").value = sy[1]; $("wdOn").checked = sy[2] === "1"; $("ledMode").value = sy[3];
@@ -1106,7 +1170,7 @@ async function odUpload(data){
 }
 $("bOdUp").onclick = () => { if (frame) odUpload(frame); };
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
-i18nCollect(); i18nApply();
+i18nCollect(); i18nApply(); renderFw();
 document.getElementById("langRu").onclick = () => setLang("ru");
 document.getElementById("langEn").onclick = () => setLang("en");
 </script>
