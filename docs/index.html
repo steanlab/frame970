@@ -24,6 +24,9 @@ button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
 input{font:inherit;padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);width:5.5em}
 input.wide{width:14em}
 .dot{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin-right:4px;border:1px solid #0004}
+select{font:inherit;padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--fg)}
+progress{width:100%;height:10px}
+#prev{max-width:240px;width:100%;height:auto;border:1px solid var(--bd);border-radius:6px;image-rendering:pixelated;background:#fff}
 #st{color:var(--mut)}
 #log{background:var(--log);color:var(--logfg);font:13px/1.35 ui-monospace,Menlo,Consolas,monospace;height:340px;overflow:auto;padding:8px;border-radius:8px;white-space:pre-wrap;word-break:break-all}
 #log .tx{color:#93c5fd}#log .sys{color:#fbbf24}
@@ -54,6 +57,42 @@ label{color:var(--mut);font-size:13px}
     <button data-c="11 03 02">Син. выкл</button>
   </div>
   <div class="row"><small style="color:var(--mut)">Включается на ~20 с, на это время сон отключён.</small></div>
+</div>
+
+<div class="card">
+  <h2>Слайды (флеш метки)</h2>
+  <div class="row">
+    <label>слот</label>
+    <select id="slot"><option>0</option><option>1</option><option>2</option><option>3</option></select>
+    <button class="nc" id="bList">Список</button>
+    <button class="nc" id="bShow">Показать на панели</button>
+    <button class="nc" id="bVerify">Проверить CRC</button>
+    <button class="nc" id="bErase">Стереть</button>
+    <button class="nc" id="bFill">Тестовая картинка в слот</button>
+    <button class="nc" id="bLink">Связь (MTU)</button>
+  </div>
+  <div class="row">
+    <input type="file" id="file" accept="image/*" style="width:auto;max-width:100%">
+  </div>
+  <div class="row">
+    <label>вписать</label>
+    <select id="fit"><option value="cover">заполнить (обрезать)</option><option value="contain">целиком (поля белые)</option><option value="stretch">растянуть</option></select>
+    <label>поворот</label>
+    <select id="rot"><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select>
+    <label>растр</label>
+    <select id="dith"><option value="fs">Флойд–Стейнберг</option><option value="none">без растра</option></select>
+  </div>
+  <div class="row">
+    <canvas id="prev" width="672" height="960"></canvas>
+  </div>
+  <div class="row">
+    <label>запись</label>
+    <select id="wmode"><option value="nr">без подтверждения (быстро)</option><option value="r">с подтверждением (надёжно)</option></select>
+    <button class="nc pri" id="bUp" disabled>Загрузить в слот</button>
+    <button class="nc" id="bUpStop" disabled>Прервать</button>
+  </div>
+  <div class="row"><progress id="prog" value="0" max="100"></progress></div>
+  <div class="row"><small id="upinfo" style="color:var(--mut)">Выберите картинку: она уменьшается до 672×960 (портрет), приводится к 4 цветам (белый, чёрный, красный, жёлтый) и передаётся в сыром виде, 161 280 байт.</small></div>
 </div>
 
 <div class="card">
@@ -133,6 +172,7 @@ label{color:var(--mut);font-size:13px}
 <script>
 const SVC = 0x2446, CHR = 0x2446;
 let dev = null, chr = null, buf = "";
+let srcImg = null, frame = null, upAbort = false, upBusy = false;
 const $ = id => document.getElementById(id);
 const logEl = $("log");
 let plain = "";
@@ -152,7 +192,8 @@ function setState(on, txt){
   $("st").textContent = txt;
   $("bConn").disabled = on;
   $("bDisc").disabled = !on;
-  document.querySelectorAll("[data-c],#bNfcRead,#bSleep,#bAuto,#bRaw").forEach(b => b.disabled = !on);
+  document.querySelectorAll("[data-c],#bNfcRead,#bSleep,#bAuto,#bRaw,.nc").forEach(b => b.disabled = !on);
+  if (typeof refreshUp === "function") refreshUp();
 }
 setState(false, "не подключено");
 
@@ -160,7 +201,7 @@ function onNotify(ev){
   const v = ev.target.value;
   const bytes = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
   for (const b of bytes){
-    if (b === 10){ if (buf.length) add(buf); buf = ""; }
+    if (b === 10){ if (buf.length){ add(buf); lineHook(buf); } buf = ""; }
     else if (b === 13) {}
     else if (b >= 32 && b < 127) buf += String.fromCharCode(b);
     else buf += "\\x" + b.toString(16).padStart(2,"0");
@@ -204,14 +245,14 @@ function parseHex(s){
 const hx = a => Array.from(a).map(b => b.toString(16).padStart(2,"0")).join(" ");
 const h2 = n => (n & 255).toString(16).padStart(2,"0");
 
-async function send(s){
-  if (!chr){ add("нет соединения", "sys"); return; }
+async function send(s, strict){
+  if (!chr){ add("нет соединения", "sys"); if (strict) throw new Error("нет соединения"); return; }
   try{
     const a = typeof s === "string" ? parseHex(s) : s;
     add("→ " + hx(a), "tx");
     if (chr.writeValueWithoutResponse) await chr.writeValueWithoutResponse(a);
     else await chr.writeValue(a);
-  }catch(e){ add("ошибка отправки: " + e.message, "sys"); }
+  }catch(e){ add("ошибка отправки: " + e.message, "sys"); if (strict) throw e; }
 }
 
 $("bConn").onclick = connect;
@@ -239,6 +280,192 @@ $("bSave").onclick = () => {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 };
+
+/* ================= slides: image -> 4 colours -> scan order -> upload ================= */
+/* BEGIN pure (tested in Node) */
+const PW = 672, PH = 960;                       // portrait picture
+const PAL = [[255,255,255],[0,0,0],[190,20,20],[240,205,20]];   // white, black, red, yellow = colour indices 0..3 (tune with real panel colours later)
+
+function crc32(d){
+  let t = crc32.t;
+  if (!t){ t = crc32.t = new Uint32Array(256); for (let n = 0; n < 256; n++){ let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } }
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < d.length; i++) c = t[(c ^ d[i]) & 255] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+/* rgba: Uint8ClampedArray of PW*PH*4 -> idx: Uint8Array PW*PH (row-major portrait), values 0..3 */
+function quantize(rgba, mode){
+  const n = PW * PH, idx = new Uint8Array(n);
+  const err = new Float32Array(PW * 3 * 2);      // two rows of error
+  let cur = 0, nxt = PW * 3;
+  const fs = mode === "fs";
+  for (let y = 0; y < PH; y++){
+    const ltr = !fs || (y & 1) === 0;
+    for (let k = 0; k < PW; k++){
+      const x = ltr ? k : PW - 1 - k, p = y * PW + x;
+      let r = rgba[p*4], g = rgba[p*4+1], b = rgba[p*4+2];
+      if (fs){ r += err[cur + x*3]; g += err[cur + x*3+1]; b += err[cur + x*3+2]; }
+      let best = 0, bd = 1e9;
+      for (let c = 0; c < 4; c++){
+        const dr = r - PAL[c][0], dg = g - PAL[c][1], db = b - PAL[c][2];
+        const d = dr*dr + dg*dg + db*db;
+        if (d < bd){ bd = d; best = c; }
+      }
+      idx[p] = best;
+      if (fs){
+        const er = r - PAL[best][0], eg = g - PAL[best][1], eb = b - PAL[best][2];
+        const dx = ltr ? 1 : -1;
+        const add = (xx, base, f) => { if (xx >= 0 && xx < PW){ err[base + xx*3] += er*f; err[base + xx*3+1] += eg*f; err[base + xx*3+2] += eb*f; } };
+        add(x + dx, cur, 7/16);
+        if (y + 1 < PH){ add(x - dx, nxt, 3/16); add(x, nxt, 5/16); add(x + dx, nxt, 1/16); }
+      }
+    }
+    if (fs){ err.fill(0, cur, cur + PW*3); const t = cur; cur = nxt; nxt = t; }
+  }
+  return idx;
+}
+
+/* portrait colour indices -> the tag's raw frame: scan line y = portrait column y, 960 pixels, 4 per byte, first pixel in bits 7..6 */
+function toScan(idx){
+  const out = new Uint8Array(672 * 240);
+  for (let y = 0; y < 672; y++)
+    for (let x = 0; x < 960; x++)
+      out[y*240 + (x >> 2)] |= idx[x*PW + y] << (6 - 2 * (x & 3));
+  return out;
+}
+/* END pure */
+
+
+function refreshUp(){
+  $("bUp").disabled = !(chr && dev && dev.gatt.connected && frame) || upBusy;
+  $("bUpStop").disabled = !upBusy;
+}
+
+function render(){
+  if (!srcImg) return;
+  const c = document.createElement("canvas"); c.width = PW; c.height = PH;
+  const g = c.getContext("2d", {willReadFrequently:true});
+  g.fillStyle = "#fff"; g.fillRect(0, 0, PW, PH);
+  const rot = +$("rot").value, fit = $("fit").value;
+  const sw = (rot % 180) ? srcImg.height : srcImg.width, sh = (rot % 180) ? srcImg.width : srcImg.height;
+  let dw = PW, dh = PH;
+  if (fit !== "stretch"){
+    const k = fit === "cover" ? Math.max(PW / sw, PH / sh) : Math.min(PW / sw, PH / sh);
+    dw = sw * k; dh = sh * k;
+  }
+  g.save();
+  g.translate(PW / 2, PH / 2);
+  g.rotate(rot * Math.PI / 180);
+  const rw = (rot % 180) ? dh : dw, rh = (rot % 180) ? dw : dh;     // size before rotation
+  g.drawImage(srcImg, -rw / 2, -rh / 2, rw, rh);
+  g.restore();
+  const rgba = g.getImageData(0, 0, PW, PH).data;
+  const idx = quantize(rgba, $("dith").value);
+  frame = toScan(idx);
+  const pv = $("prev"), pg = pv.getContext("2d"), im = pg.createImageData(PW, PH);
+  for (let i = 0; i < PW * PH; i++){ const p = PAL[idx[i]]; im.data[i*4] = p[0]; im.data[i*4+1] = p[1]; im.data[i*4+2] = p[2]; im.data[i*4+3] = 255; }
+  pg.putImageData(im, 0, 0);
+  $("upinfo").textContent = "Готово к загрузке: 161 280 байт, CRC " + crc32(frame).toString(16).padStart(8, "0");
+  refreshUp();
+}
+
+$("file").onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const img = new Image();
+  img.onload = () => { srcImg = img; render(); };
+  img.onerror = () => add("не удалось открыть картинку", "sys");
+  img.src = URL.createObjectURL(f);
+};
+["fit", "rot", "dith"].forEach(id => $(id).onchange = render);
+
+/* lines from the tag that start with "UP " are queued for the upload code */
+const upq = []; let upw = null;
+function lineHook(t){
+  if (!/^(UP |LINK |slot )/.test(t)) return;
+  upq.push(t);
+  if (upq.length > 200) upq.shift();
+  if (upw){ const w = upw; upw = null; w(); }
+}
+function nextUp(ms){
+  return new Promise((res, rej) => {
+    const tick = () => {
+      if (upq.length) return res(upq.shift());
+      const timer = setTimeout(() => { upw = null; rej(new Error("нет ответа от метки")); }, ms);
+      upw = () => { clearTimeout(timer); tick(); };
+    };
+    tick();
+  });
+}
+async function nextUpLine(re, ms){
+  const end = Date.now() + ms;
+  for (;;){
+    const t = await nextUp(Math.max(100, end - Date.now()));
+    if (/^UP FAIL/.test(t)) throw new Error(t);
+    if (re.test(t)) return t;
+    if (Date.now() > end) throw new Error("нет ответа от метки");
+  }
+}
+
+const le32 = v => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
+
+async function upload(slot, data){
+  upBusy = true; upAbort = false; refreshUp();
+  upq.length = 0;
+  const prog = $("prog"), info = $("upinfo");
+  prog.value = 0;
+  try{
+    const crc = crc32(data);
+    info.textContent = "Метка стирает слот…";
+    const win = 8;
+    await send(Uint8Array.from([0x42, slot, ...le32(data.length), ...le32(crc), win]), true);
+    const rdy = await nextUpLine(/^UP READY/, 90000);
+    const chunk = +/chunk=(\d+)/.exec(rdy)[1], w = +/win=(\d+)/.exec(rdy)[1];
+    const noResp = $("wmode").value === "nr" && chr.writeValueWithoutResponse;
+    add("загрузка: чанк " + chunk + " Б, окно " + w + ", " + (noResp ? "без подтверждения" : "с подтверждением"), "sys");
+    let off = 0, seq = 0, since = 0;
+    const t0 = performance.now();
+    while (off < data.length){
+      if (upAbort) throw new Error("прервано");
+      const n = Math.min(chunk, data.length - off);
+      const pkt = new Uint8Array(3 + n);
+      pkt[0] = 0x43; pkt[1] = seq & 255; pkt[2] = seq >> 8;
+      pkt.set(data.subarray(off, off + n), 3);
+      if (noResp) await chr.writeValueWithoutResponse(pkt); else if (chr.writeValueWithResponse) await chr.writeValueWithResponse(pkt); else await chr.writeValue(pkt);
+      off += n; seq++; since++;
+      if (since >= w || off >= data.length){
+        since = 0;
+        const a = await nextUpLine(/^UP ACK/, 15000);
+        if (+a.slice(7) !== off) throw new Error("неверное подтверждение: " + a);
+        prog.value = 100 * off / data.length;
+        const sec = (performance.now() - t0) / 1000;
+        info.textContent = Math.round(off / 1024) + " из " + Math.round(data.length / 1024) + " КБ, " + (off / 1024 / sec).toFixed(1) + " КБ/с";
+      }
+    }
+    await send(Uint8Array.from([0x44]), true);
+    const ok = await nextUpLine(/^UP OK/, 30000);
+    const sec = (performance.now() - t0) / 1000;
+    info.textContent = "Загружено за " + sec.toFixed(1) + " с. " + ok + ". Теперь можно «Показать на панели».";
+    prog.value = 100;
+  }catch(e){
+    add("загрузка не удалась: " + e.message, "sys");
+    info.textContent = "Не удалось: " + e.message;
+    try{ await send(Uint8Array.from([0x49])); }catch(_){}
+  }finally{
+    upBusy = false; refreshUp();
+  }
+}
+
+const slotNo = () => +$("slot").value;
+$("bList").onclick = () => send("40");
+$("bShow").onclick = () => send("45 " + h2(slotNo()));
+$("bVerify").onclick = () => send("47 " + h2(slotNo()));
+$("bErase").onclick = () => send("41 " + h2(slotNo()));
+$("bFill").onclick = () => send("46 " + h2(slotNo()));
+$("bLink").onclick = () => send("48");
+$("bUp").onclick = () => { if (frame) upload(slotNo(), frame); };
+$("bUpStop").onclick = () => { upAbort = true; };
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
 </body>
