@@ -4,7 +4,7 @@ Service `0x2446`, one characteristic `0x2446` (write, write without response, no
 Device name `n970-AABBCC`. The first byte of a write is the command. The tag answers with text lines
 (`\n` terminated, split into 20-byte notifications); the web page joins them.
 
-This is a working protocol of the project. OpenDisplay compatibility (firmware 5e) works on top of it, see the last section.
+This is a working protocol of the project. OpenDisplay compatibility (firmware 5f) works on top of it, see the last section.
 
 ## Slide storage
 
@@ -33,6 +33,7 @@ pixel in bits 7..6. Colour index: 0 white, 1 black, 2 red, 3 yellow. Scan line `
 | `4A en every16 mask poll [clean mode]` | slideshow settings: `en` 0/1, `every` minutes (little endian, 1..1080), `mask` slots in bits 0..3, `poll` seconds between wake-ups (10..250), optional `clean` = clean the panel before every n-th slide (0 = never) and `mode` 1 = white, 2 = black then white. Stored in flash. Answers with the `SS ...` line |
 | `4B` | report the slideshow: `SS on every=60 mask=0F poll=30 clean=0/1 last=1 el=120` (minutes, slot mask, seconds, clean n/mode, last slot shown, seconds elapsed) |
 | `4C` | draw the next slide now |
+| `4E chars` | device name (1..8 characters), without characters: default `OD` + MAC; replies `name: ...` |
 | `4D mode slot` | OpenDisplay stream orientation (0..3) and target slot (0..3); replies `OD mode=.. slot=..` |
 
 Any error during an upload gives `UP FAIL reason` and cancels it (wrong sequence number, bad CRC, 30 s without data, disconnect).
@@ -49,7 +50,7 @@ off the tag stays awake and connectable. The settings are an append-only log of 
 
 `01 nn` deep sleep nn s, `02` status, `04 nn` auto-sleep, `10 11` LED, `20..2B` NFC discovery, `30..33` panel test (see the page), `34 mode` clean the panel against ghost images (1 = white, 2 = black then white, about 1 to 2 minutes).
 
-## OpenDisplay compatibility (firmware 5e)
+## OpenDisplay compatibility (firmware 5f)
 
 Same service and characteristic `0x2446`. OpenDisplay commands are a 2-byte big-endian opcode with high byte `00`;
 ours start with `01`..`4D`, so the two never clash. Replies are notifications `00 cmd ...` (ok) or `FF cmd ...` (error).
@@ -57,11 +58,12 @@ While an OpenDisplay client is talking (any write that starts with `00`) the fir
 start with `00` switches the text log back on.
 
 The tag advertises manufacturer data with company id `0x2446` (14 bytes, zeros at the moment: no battery, temperature or button data)
-and, in the scan response, the service `0x2446` and the name `OD970-AABBCC` (OpenDisplay clients look for names that start with `OD`).
+the complete local name in the same packet (Chrome only matches names from the first advertisement packet) and, in the scan response, the service `0x2446` and the name again.
+The default name is `OD` + the last three MAC bytes (`ODAABBCC`, 8 characters: all that fits next to the flags and the manufacturer data). `4E chars` stores a name of 1..8 printable ASCII characters (kept in flash sector 0xF6000, used at once), `4E` alone restores the default.
 
 | opcode | meaning | reply |
 |---|---|---|
-| `00 43` | firmware version | `00 43 major minor len text`, here 1 0 7 `n970-5e` |
+| `00 43` | firmware version | `00 43 major minor len text`, here 1 0 7 `n970-5f` |
 | `00 40` | read configuration | chunks `00 40 nnnn data`; chunk 0 is `00 40 0000 total16 data`, up to 96 data bytes per chunk |
 | `00 44` | manufacturer data | `00 44` + `46 24` + 14 bytes |
 | `00 50` | authenticate | `00 50 03` (encryption is not configured) |

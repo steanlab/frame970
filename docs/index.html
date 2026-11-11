@@ -41,9 +41,10 @@ label{color:var(--mut);font-size:13px}
   <div class="row">
     <button id="bConn" class="pri">Подключиться</button>
     <button id="bDisc" disabled>Отключиться</button>
+    <label><input type="checkbox" id="showAll" style="width:auto"> показать все устройства</label>
     <span id="st">не подключено</span>
   </div>
-  <div class="row"><small style="color:var(--mut)">Нужен Chrome/Edge с Web Bluetooth. Имя метки: n970-XXXXXX. Метка засыпает через ~10 с после включения, если к ней не подключиться — подключайтесь сразу после подачи питания или после пробуждения.</small></div>
+  <div class="row"><small style="color:var(--mut)">Нужен Chrome/Edge с Web Bluetooth. Имя метки: OD и шесть цифр MAC (ODAABBCC), или своё (см. карточку OpenDisplay); если метки нет в списке, отметьте «показать все устройства». Метка засыпает через ~10 с после включения, если к ней не подключиться — подключайтесь сразу после подачи питания или после пробуждения.</small></div>
 </div>
 
 <div class="card">
@@ -151,6 +152,12 @@ label{color:var(--mut);font-size:13px}
     <select id="odSlot"><option value="3">3</option><option value="2">2</option><option value="1">1</option><option value="0">0</option></select>
     <button class="nc" id="bOdSet">Записать в метку (4D)</button>
   </div>
+  <div class="row">
+    <label>имя метки</label><input id="devName" maxlength="8" placeholder="до 8 символов" style="width:130px">
+    <button class="nc" id="bNameSet">Задать</button>
+    <button class="nc" id="bNameDef">Сбросить (OD + MAC)</button>
+  </div>
+  <div class="row"><small style="color:var(--mut)">Имя до 8 латинских символов, цифр и знаков. Оно видно в списке устройств и при сканировании. Клиенты OpenDisplay ищут метки по данным производителя, а не по имени, но веб-загрузчику, который ищет «OD…», может понадобиться имя, начинающееся с OD.</small></div>
   <div class="row">
     <label>чанк</label><input id="odChunk" type="number" min="10" max="230" value="230" style="width:70px"><label>байт</label>
     <button class="nc pri" id="bOdUp" disabled>Загрузить по OpenDisplay</button>
@@ -276,10 +283,10 @@ function onNotify(ev){
 async function connect(){
   if (!navigator.bluetooth){ add("Web Bluetooth недоступен в этом браузере", "sys"); return; }
   try{
-    dev = await navigator.bluetooth.requestDevice({
-      filters:[{namePrefix:"OD"}, {namePrefix:"n970-"}],
-      optionalServices:[SVC]
-    });
+    const all = $("showAll") && $("showAll").checked;      // a tag with a custom name, or a browser that does not list it
+    dev = await navigator.bluetooth.requestDevice(all
+      ? {acceptAllDevices:true, optionalServices:[SVC]}
+      : {filters:[{namePrefix:"OD"}, {namePrefix:"n970-"}], optionalServices:[SVC]});
     dev.addEventListener("gattserverdisconnected", () => {
       if (buf.length){ add(buf); buf = ""; }
       add("— связь потеряна —", "sys");
@@ -730,6 +737,12 @@ function odShowCfg(d){                       // outer packet: len16 version, pac
 $("bOdVer").onclick = () => send("00 43");
 $("bOdCfg").onclick = () => send("00 40");
 $("bOdMsd").onclick = () => send("00 44");
+$("bNameSet").onclick = () => {
+  const t = $("devName").value.trim();
+  if (!/^[\x20-\x7e]{1,8}$/.test(t)){ add("имя: 1–8 символов ASCII", "sys"); return; }
+  send(Uint8Array.from([0x4e, ...Array.from(t).map(c => c.charCodeAt(0))]));
+};
+$("bNameDef").onclick = () => send("4e");
 $("bOdSet").onclick = () => send("4d " + h2(+$("odMode").value) + " " + h2(+$("odSlot").value));
 async function odUpload(data){
   upBusy = true; refreshUp();
