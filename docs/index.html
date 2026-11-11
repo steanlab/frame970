@@ -57,6 +57,20 @@ label{color:var(--mut);font-size:13px}
 </div>
 
 <div class="card">
+  <h2>Панель</h2>
+  <div class="row">
+    <button data-c="32">Температура панели (32)</button>
+    <button data-c="30">Нарисовать тестовую картинку (30, около 40 с)</button>
+  </div>
+  <div class="row">
+    <button data-c="31 00">Только проход 0 (31 00)</button>
+    <button data-c="31 01">Только проход 1 (31 01)</button>
+    <button data-c="33">Выключить панель (33)</button>
+  </div>
+  <div class="row"><small style="color:var(--mut)">Во время рисования метка занята и отвечает только строками лога. Не отключайтесь до строки «epd: done».</small></div>
+</div>
+
+<div class="card">
   <h2>NFC (FM11NT083V)</h2>
   <div class="row">
     <button data-c="20">Скан I²C (20)</button>
