@@ -30,9 +30,19 @@ pixel in bits 7..6. Colour index: 0 white, 1 black, 2 red, 3 yellow. Scan line `
 | `47 ss` | re-read slot `ss` and check its CRC |
 | `48` | `LINK mtu=.. dle tx=.. rx=..`: the negotiated ATT MTU and link packet sizes |
 | `49` | abort an upload |
+| `4A en every16 mask poll` | slideshow settings: `en` 0/1, `every` minutes (little endian, 1..1080), `mask` slots in bits 0..3, `poll` seconds between wake-ups (10..250). Stored in flash. Answers with the `SS ...` line |
+| `4B` | report the slideshow: `SS on every=60 min mask=0F poll=30 s last=1 elapsed=120 s` |
+| `4C` | draw the next slide now |
 
 Any error during an upload gives `UP FAIL reason` and cancels it (wrong sequence number, bad CRC, 30 s without data, disconnect).
 `C` is chosen by the tag: `min(MTU-6, link rx size-10, 240)`, so a whole ATT write always fits one link packet.
+
+## Slideshow
+
+With the slideshow on, the tag sleeps (deep sleep, a few microamps) and wakes every `poll` seconds. Each wake-up opens a connect window of about
+6 s; when the interval has passed the tag draws the next filled slot of the mask, then sleeps again. At power-up it draws a slide right away
+after a 10 s window. The elapsed time is counted from the sleep times, so the interval is accurate to a few percent only. With the slideshow
+off the tag stays awake and connectable. The settings are an append-only log of 8-byte records in flash sector 0xF7000.
 
 ## Older commands
 

@@ -83,6 +83,15 @@ label{color:var(--mut);font-size:13px}
     <select id="dith"><option value="fs">Флойд–Стейнберг</option><option value="none">без растра</option></select>
   </div>
   <div class="row">
+    <label><input type="checkbox" id="flip" checked style="width:auto"> метка висит «вверх ногами»: повернуть весь кадр на 180° (запоминается)</label>
+  </div>
+  <div class="row">
+    <label>калибровочные таблицы:</label>
+    <button id="bCal1" title="поля четырёх цветов, линейки смешения, тонкие линии, шахматки">Цвета и смешение</button>
+    <button id="bCal2" title="градиенты и серые плашки, растр Флойда–Стейнберга">Градиенты</button>
+    <button id="bCal3" title="сетка, круг, диагонали, полосы, градации, пакеты линий">ТВ-таблица</button>
+  </div>
+  <div class="row">
     <canvas id="prev" width="672" height="960"></canvas>
   </div>
   <div class="row">
@@ -93,6 +102,27 @@ label{color:var(--mut);font-size:13px}
   </div>
   <div class="row"><progress id="prog" value="0" max="100"></progress></div>
   <div class="row"><small id="upinfo" style="color:var(--mut)">Выберите картинку: она уменьшается до 672×960 (портрет), приводится к 4 цветам (белый, чёрный, красный, жёлтый) и передаётся в сыром виде, 161 280 байт.</small></div>
+</div>
+
+<div class="card">
+  <h2>Слайдшоу</h2>
+  <div class="row">
+    <label><input type="checkbox" id="ssOn" style="width:auto"> включено</label>
+    <label>менять каждые</label><input id="ssEvery" type="number" min="1" max="1080" value="60"><label>мин</label>
+    <label>слоты:</label>
+    <label><input type="checkbox" class="ssS" data-b="1" checked style="width:auto">0</label>
+    <label><input type="checkbox" class="ssS" data-b="2" checked style="width:auto">1</label>
+    <label><input type="checkbox" class="ssS" data-b="4" checked style="width:auto">2</label>
+    <label><input type="checkbox" class="ssS" data-b="8" checked style="width:auto">3</label>
+  </div>
+  <div class="row">
+    <label>метка просыпается и слушает каждые</label>
+    <select id="ssPoll"><option value="10">10 с</option><option value="30" selected>30 с</option><option value="60">60 с</option><option value="120">2 мин</option><option value="250">4 мин</option></select>
+    <button class="nc pri" id="bSsSet">Применить</button>
+    <button class="nc" id="bSsGet">Прочитать с метки</button>
+    <button class="nc" id="bSsStep">Следующий слайд сейчас</button>
+  </div>
+  <div class="row"><small style="color:var(--mut)">Между проверками метка спит. Чтобы подключиться (выключить слайдшоу, сменить интервал), нажмите «Подключиться» и подождите: окно связи открывается после каждого пробуждения, не дольше чем через выбранный интервал. Чем реже просыпается метка, тем дольше работает батарея. Выключенное слайдшоу оставляет метку всегда на связи.</small></div>
 </div>
 
 <div class="card">
@@ -334,6 +364,93 @@ function toScan(idx){
       out[y*240 + (x >> 2)] |= idx[x*PW + y] << (6 - 2 * (x & 3));
   return out;
 }
+
+function rotate180(idx){ const n = idx.length, o = new Uint8Array(n); for (let i = 0; i < n; i++) o[i] = idx[n - 1 - i]; return o; }
+
+/* ---- calibration charts, built directly from the four panel colours (no dithering), portrait 672 x 960 ----
+   colour indices: 0 white, 1 black, 2 red, 3 yellow. Each chart carries an "F" in the top left corner (shows turning and mirroring)
+   and red squares in the corners (are the panel corners visible). */
+const BAYER8 = [0,32,8,40,2,34,10,42, 48,16,56,24,50,18,58,26, 12,44,4,36,14,46,6,38, 60,28,52,20,62,30,54,22,
+                3,35,11,43,1,33,9,41, 51,19,59,27,49,17,57,25, 15,47,7,39,13,45,5,37, 63,31,55,23,61,29,53,21];
+function chartKit(){
+  const idx = new Uint8Array(PW * PH);                // all white
+  const set = (x, y, k) => { if (x >= 0 && x < PW && y >= 0 && y < PH) idx[y * PW + x] = k; };
+  const rect = (x, y, w, h, k) => { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) set(x + i, y + j, k); };
+  const frameR = (x, y, w, h, k) => { rect(x, y, w, 1, k); rect(x, y + h - 1, w, 1, k); rect(x, y, 1, h, k); rect(x + w - 1, y, 1, h, k); };
+  const mix = (x, y, a, b, s) => BAYER8[(y & 7) * 8 + (x & 7)] < s * 8 ? b : a;          // s = 0..8: share of b
+  const ramp = (x0, y0, stepW, h, a, b) => { for (let s = 0; s < 9; s++) for (let y = 0; y < h; y++) for (let x = 0; x < stepW; x++) set(x0 + s * stepW + x, y0 + y, mix(x0 + s * stepW + x, y0 + y, a, b, s)); frameR(x0, y0, stepW * 9, h, 1); };
+  const marks = () => {
+    rect(0, 0, PW, 2, 1); rect(0, PH - 2, PW, 2, 1); rect(0, 0, 2, PH, 1); rect(PW - 2, 0, 2, PH, 1);
+    for (const [x, y] of [[2, 2], [PW - 16, 2], [2, PH - 16], [PW - 16, PH - 16]]) rect(x, y, 14, 14, 2);
+    rect(24, 24, 6, 40, 1); rect(24, 24, 28, 6, 1); rect(24, 40, 20, 6, 1);                // the letter F
+  };
+  const checker = (x0, y0, w, h, cell, k) => { for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) set(x0 + x, y0 + y, ((Math.floor(x / cell) + Math.floor(y / cell)) & 1) ? 0 : k); frameR(x0, y0, w, h, 1); };
+  return {idx, set, rect, frameR, mix, ramp, marks, checker};
+}
+
+function chartColours(){
+  const {idx, set, rect, frameR, ramp, marks, checker} = chartKit();
+  [1, 0, 2, 3].forEach((k, i) => { rect(24 + i * 162, 80, 150, 70, k); frameR(24 + i * 162, 80, 150, 70, 1); });           // solid fields K W R Y
+  [[0,1],[1,2],[1,3],[0,2],[0,3],[3,2]].forEach(([a, b], r) => ramp(36, 170 + r * 66, 66, 52, a, b));                    // W>K, K>R, K>Y, W>R, W>Y, Y>R
+  const y0 = 580, h = 96;
+  for (let x = 0; x < 96; x += 2) rect(24 + x, y0, 1, h, 1);                                  // vertical lines 1 px
+  frameR(24, y0, 96, h, 1);
+  for (let x = 0; x < 96; x += 4) rect(186 + x, y0, 2, h, 1);                                 // vertical lines 2 px
+  frameR(186, y0, 96, h, 1);
+  for (let y = 0; y < h; y += 2) rect(348, y0 + y, 96, 1, 1);                                 // horizontal lines 1 px
+  frameR(348, y0, 96, h, 1);
+  checker(510, y0, 96, h, 1, 1);                                                              // 1 px checkerboard K/W
+  checker(24, y0 + 120, 96, h, 1, 2); checker(186, y0 + 120, 96, h, 1, 3);                    // R/W, Y/W
+  for (let y = 0; y < h; y++) for (let x = 0; x < 96; x++) set(348 + x, y0 + 120 + y, ((x + y) >> 2 & 1) ? 2 : 3);    // diagonal Y/R
+  frameR(348, y0 + 120, 96, h, 1);
+  for (let i = 0; i < 4; i++) frameR(510 + i * 8, y0 + 120 + i * 8, 96 - i * 16, h - i * 16, i & 1 ? 0 : 1);
+  [[0,1,25],[0,1,50],[0,1,75]].forEach(([a, b, p], i) => { for (let y = 0; y < 60; y++) for (let x = 0; x < 150; x++) set(24 + i * 162 + x, 840 + y, BAYER8[(y & 7) * 8 + (x & 7)] < p * 64 / 100 ? b : a); frameR(24 + i * 162, 840, 150, 60, 1); });   // flat 25 / 50 / 75 % black
+  marks();
+  return idx;
+}
+
+function chartGradients(){
+  const rgba = new Uint8ClampedArray(PW * PH * 4).fill(255);
+  const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  const enc = v => 255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055);
+  const put = (x, y, c) => { const p = (y * PW + x) * 4; rgba[p] = c[0]; rgba[p+1] = c[1]; rgba[p+2] = c[2]; };
+  const bands = [[1,0],[1,2],[0,3],[3,2],[0,2]];                                   // K>W, K>R, W>Y, Y>R, W>R, mixed in linear light
+  bands.forEach(([a, b], r) => { for (let x = 0; x < 624; x++) { const t = x / 623; const c = [0,1,2].map(i => enc(lin(PAL[a][i]) * (1 - t) + lin(PAL[b][i]) * t)); for (let y = 0; y < 90; y++) put(24 + x, 80 + r * 104 + y, c); } });
+  [64, 128, 192].forEach((v, i) => { for (let y = 0; y < 110; y++) for (let x = 0; x < 192; x++) put(24 + i * 216 + x, 620 + y, [v, v, v]); });       // flat grays 25 / 50 / 75 % (sRGB)
+  [[1,0],[2,0],[3,0]].forEach(([a], i) => { for (let y = 0; y < 90; y++) for (let x = 0; x < 192; x++) put(24 + i * 216 + x, 760 + y, PAL[a]); });          // solid black, red, yellow
+  const idx = quantize(rgba, "fs");
+  const {rect, frameR, marks} = chartKit();
+  const set = (x, y, k) => { idx[y * PW + x] = k; };
+  const R = (x, y, w, h, k) => { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) set(x + i, y + j, k); };
+  for (let r = 0; r < 5; r++) { R(24, 80 + r * 104 - 1, 624, 1, 1); R(24, 80 + r * 104 + 90, 624, 1, 1); }
+  for (let i = 0; i < 3; i++) { R(24 + i * 216, 620 - 1, 192, 1, 1); R(24 + i * 216, 620 + 110, 192, 1, 1); R(24 + i * 216, 760 - 1, 192, 1, 1); R(24 + i * 216, 760 + 90, 192, 1, 1); }
+  // frame, corners and the F on top
+  R(0, 0, PW, 2, 1); R(0, PH - 2, PW, 2, 1); R(0, 0, 2, PH, 1); R(PW - 2, 0, 2, PH, 1);
+  for (const [x, y] of [[2, 2], [PW - 16, 2], [2, PH - 16], [PW - 16, PH - 16]]) R(x, y, 14, 14, 2);
+  R(24, 24, 6, 40, 1); R(24, 24, 28, 6, 1); R(24, 40, 20, 6, 1);
+  return idx;
+}
+
+function chartTv(){
+  const {idx, set, rect, frameR, mix, ramp, marks, checker} = chartKit();
+  for (let k = -10; k <= 10; k++) rect(336 + 32 * k, 0, 1, PH, 1);                           // grid 32 px
+  for (let k = -15; k <= 15; k++) rect(0, 480 + 32 * k, PW, 1, 1);
+  for (let x = 0; x < PW; x++) { const y = Math.round(x * (PH - 1) / (PW - 1)); set(x, y, 1); set(x, PH - 1 - y, 1); }      // diagonals
+  const cx = 336, cy = 700;
+  for (let y = 0; y < PH; y++) for (let x = 0; x < PW; x++) { const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+    if (d < 170 && d > 168) set(x, y, 1);
+    if (d < 70) { const dx = x + 0.5 - cx, dy = y + 0.5 - cy; set(x, y, dx < 0 ? (dy < 0 ? 0 : 2) : (dy < 0 ? 3 : 1)); }
+    if (d < 71 && d > 69) set(x, y, 1); }
+  rect(12, 70, 648, 380, 0); frameR(12, 70, 648, 380, 1);                                  // clean block for the bars and line packs
+  [0, 3, 2, 1].forEach((k, i) => { rect(24 + i * 156, 82, 156, 80, k); }); frameR(24, 82, 624, 80, 1);       // bars W Y R K
+  ramp(24, 172, 69, 56, 1, 0);                                                              // K>W steps
+  const pitches = [2, 3, 4, 5, 6, 8];
+  pitches.forEach((p, i) => { const x0 = 24 + i * 104; for (let x = 0; x < 100; x++) if (x % p === 0) rect(x0 + x, 240, 1, 96, 1); frameR(x0, 240, 100, 96, 1); });         // vertical line packs
+  pitches.forEach((p, i) => { const x0 = 24 + i * 104; for (let y = 0; y < 96; y++) if (y % p === 0) rect(x0, 346 + y, 100, 1, 1); frameR(x0, 346, 100, 96, 1); });          // horizontal line packs
+  checker(24, 880, 140, 56, 1, 1); checker(180, 880, 140, 56, 2, 1); checker(336, 880, 140, 56, 1, 2); checker(492, 880, 140, 56, 1, 3);
+  marks();
+  return idx;
+}
 /* END pure */
 
 
@@ -342,31 +459,37 @@ function refreshUp(){
   $("bUpStop").disabled = !upBusy;
 }
 
+let chartIdx = null;
+const flipOn = () => $("flip").checked;
+
 function render(){
-  if (!srcImg) return;
-  const c = document.createElement("canvas"); c.width = PW; c.height = PH;
-  const g = c.getContext("2d", {willReadFrequently:true});
-  g.fillStyle = "#fff"; g.fillRect(0, 0, PW, PH);
-  const rot = +$("rot").value, fit = $("fit").value;
-  const sw = (rot % 180) ? srcImg.height : srcImg.width, sh = (rot % 180) ? srcImg.width : srcImg.height;
-  let dw = PW, dh = PH;
-  if (fit !== "stretch"){
-    const k = fit === "cover" ? Math.max(PW / sw, PH / sh) : Math.min(PW / sw, PH / sh);
-    dw = sw * k; dh = sh * k;
+  let idx;
+  if (chartIdx) idx = chartIdx;
+  else {
+    if (!srcImg) return;
+    const c = document.createElement("canvas"); c.width = PW; c.height = PH;
+    const g = c.getContext("2d", {willReadFrequently:true});
+    g.fillStyle = "#fff"; g.fillRect(0, 0, PW, PH);
+    const rot = +$("rot").value, fit = $("fit").value;
+    const sw = (rot % 180) ? srcImg.height : srcImg.width, sh = (rot % 180) ? srcImg.width : srcImg.height;
+    let dw = PW, dh = PH;
+    if (fit !== "stretch"){
+      const k = fit === "cover" ? Math.max(PW / sw, PH / sh) : Math.min(PW / sw, PH / sh);
+      dw = sw * k; dh = sh * k;
+    }
+    g.save();
+    g.translate(PW / 2, PH / 2);
+    g.rotate(rot * Math.PI / 180);
+    const rw = (rot % 180) ? dh : dw, rh = (rot % 180) ? dw : dh;     // size before rotation
+    g.drawImage(srcImg, -rw / 2, -rh / 2, rw, rh);
+    g.restore();
+    idx = quantize(g.getImageData(0, 0, PW, PH).data, $("dith").value);
   }
-  g.save();
-  g.translate(PW / 2, PH / 2);
-  g.rotate(rot * Math.PI / 180);
-  const rw = (rot % 180) ? dh : dw, rh = (rot % 180) ? dw : dh;     // size before rotation
-  g.drawImage(srcImg, -rw / 2, -rh / 2, rw, rh);
-  g.restore();
-  const rgba = g.getImageData(0, 0, PW, PH).data;
-  const idx = quantize(rgba, $("dith").value);
-  frame = toScan(idx);
   const pv = $("prev"), pg = pv.getContext("2d"), im = pg.createImageData(PW, PH);
   for (let i = 0; i < PW * PH; i++){ const p = PAL[idx[i]]; im.data[i*4] = p[0]; im.data[i*4+1] = p[1]; im.data[i*4+2] = p[2]; im.data[i*4+3] = 255; }
   pg.putImageData(im, 0, 0);
-  $("upinfo").textContent = "Готово к загрузке: 161 280 байт, CRC " + crc32(frame).toString(16).padStart(8, "0");
+  frame = toScan(flipOn() ? rotate180(idx) : idx);       // the preview shows the picture as it should be read, the frame is turned if the tag hangs upside down
+  $("upinfo").textContent = "Готово к загрузке: 161 280 байт, CRC " + crc32(frame).toString(16).padStart(8, "0") + (chartIdx ? " (калибровочная таблица)" : "");
   refreshUp();
 }
 
@@ -374,15 +497,28 @@ $("file").onchange = e => {
   const f = e.target.files[0];
   if (!f) return;
   const img = new Image();
-  img.onload = () => { srcImg = img; render(); };
+  img.onload = () => { srcImg = img; chartIdx = null; render(); };
   img.onerror = () => add("не удалось открыть картинку", "sys");
   img.src = URL.createObjectURL(f);
 };
 ["fit", "rot", "dith"].forEach(id => $(id).onchange = render);
+try{ const f = localStorage.getItem("frame970.flip"); if (f !== null) $("flip").checked = f === "1"; }catch(_){}
+$("flip").onchange = () => { try{ localStorage.setItem("frame970.flip", flipOn() ? "1" : "0"); }catch(_){} render(); };
+$("bCal1").onclick = () => { chartIdx = chartColours(); render(); };
+$("bCal2").onclick = () => { chartIdx = chartGradients(); render(); };
+$("bCal3").onclick = () => { chartIdx = chartTv(); render(); };
 
 /* lines from the tag that start with "UP " are queued for the upload code */
 const upq = []; let upw = null;
 function lineHook(t){
+  const ss = /^SS (on|off) every=(\d+) min mask=([0-9A-F]+) poll=(\d+)/.exec(t);
+  if (ss){                       // slideshow settings from the tag: fill the form
+    $("ssOn").checked = ss[1] === "on"; $("ssEvery").value = ss[2];
+    const m = parseInt(ss[3], 16);
+    document.querySelectorAll(".ssS").forEach(c => c.checked = !!(m & +c.dataset.b));
+    $("ssPoll").value = ss[4];
+    return;
+  }
   if (!/^(UP |LINK |slot )/.test(t)) return;
   upq.push(t);
   if (upq.length > 200) upq.shift();
@@ -464,6 +600,14 @@ $("bVerify").onclick = () => send("47 " + h2(slotNo()));
 $("bErase").onclick = () => send("41 " + h2(slotNo()));
 $("bFill").onclick = () => send("46 " + h2(slotNo()));
 $("bLink").onclick = () => send("48");
+$("bSsSet").onclick = () => {
+  let every = Math.max(1, Math.min(1080, Math.round(+$("ssEvery").value || 60)));
+  $("ssEvery").value = every;
+  let mask = 0; document.querySelectorAll(".ssS").forEach(c => { if (c.checked) mask |= +c.dataset.b; });
+  send(Uint8Array.from([0x4A, $("ssOn").checked ? 1 : 0, every & 255, every >> 8, mask, +$("ssPoll").value]));
+};
+$("bSsGet").onclick = () => send("4B");
+$("bSsStep").onclick = () => send("4C");
 $("bUp").onclick = () => { if (frame) upload(slotNo(), frame); };
 $("bUpStop").onclick = () => { upAbort = true; };
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
