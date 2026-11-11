@@ -61,13 +61,14 @@ label{color:var(--mut);font-size:13px}
   <div class="row">
     <button data-c="20">Скан I²C (20)</button>
     <button data-c="24">Следить за PC4 (24, 20 с)</button>
+    <button data-c="25">Следить за всеми пинами (25, 20 с)</button>
   </div>
   <div class="row">
     <label>адрес (hex)</label><input id="nAddr" value="0000" maxlength="4">
     <label>байт</label><input id="nLen" type="number" min="1" max="16" value="16">
     <button id="bNfcRead">Прочитать (21)</button>
   </div>
-  <div class="row"><small style="color:var(--mut)">Во время «Следить за PC4» поднесите телефон/карту к метке.</small></div>
+  <div class="row"><small style="color:var(--mut)">Во время слежения приложите телефон к метке и считайте её (например, NFC Tools): ждём, какой пин изменится.</small></div>
 </div>
 
 <div class="card">
