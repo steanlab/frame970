@@ -71,6 +71,11 @@ label{color:var(--mut);font-size:13px}
     <button data-c="2A">Тест записи регистров (2A)</button>
   </div>
   <div class="row">
+    <label>PC6 при обмене с чипом:</label>
+    <button data-c="2B 00">низкий (2B 00)</button>
+    <button data-c="2B 01">высокий (2B 01)</button>
+  </div>
+  <div class="row">
     <label>адрес (hex)</label><input id="nAddr" value="0000" maxlength="4">
     <label>байт</label><input id="nLen" type="number" min="1" max="16" value="16">
     <button id="bNfcRead">Прочитать (21)</button>
