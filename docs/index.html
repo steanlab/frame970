@@ -35,7 +35,7 @@ label{color:var(--mut);font-size:13px}
 </head>
 <body>
 <main>
-<h1>frame970 — консоль</h1>
+<h1 style="display:flex;justify-content:space-between;align-items:center"><span>frame970 — консоль</span><span><button id="langRu" style="padding:3px 9px">RU</button> <button id="langEn" style="padding:3px 9px">EN</button></span></h1>
 
 <div class="card">
   <div class="row">
@@ -44,7 +44,7 @@ label{color:var(--mut);font-size:13px}
     <label><input type="checkbox" id="showAll" style="width:auto"> показать все устройства</label>
     <span id="st">не подключено</span>
   </div>
-  <div class="row"><small style="color:var(--mut)">Нужен Chrome/Edge с Web Bluetooth. Имя метки: OD и шесть цифр MAC (ODAABBCC), или своё (см. карточку OpenDisplay); если метки нет в списке, отметьте «показать все устройства». Метка засыпает через ~10 с после включения, если к ней не подключиться — подключайтесь сразу после подачи питания или после пробуждения.</small></div>
+  <div class="row"><small style="color:var(--mut)">Нужен Chrome/Edge с Web Bluetooth. Имя метки: OD- и четыре цифры MAC (OD-96C1), или своё (см. карточку OpenDisplay); если метки нет в списке, отметьте «показать все устройства». Метка засыпает через ~10 с после включения, если к ней не подключиться — подключайтесь сразу после подачи питания или после пробуждения.</small></div>
 </div>
 
 <div class="card">
@@ -230,6 +230,7 @@ label{color:var(--mut);font-size:13px}
   </div>
   <div class="row">
     <span>Температура панели: <b id="stT">—</b></span>
+    <span>Датчик чипа (сырое значение): <b id="stTS">—</b></span>
     <span id="stTA" style="color:var(--mut)"></span>
   </div>
   <div class="row">
@@ -278,6 +279,262 @@ label{color:var(--mut);font-size:13px}
 </main>
 
 <script>
+// language: Russian or English; the Russian text in the page is the key, English comes from this table
+let LANG = "ru";
+try { const sv = localStorage.getItem("lang"); LANG = sv === "en" || sv === "ru" ? sv : (/^(ru|be|uk)/i.test(navigator.language || "") ? "ru" : "en"); } catch (e) { LANG = /^(ru|be|uk)/i.test(navigator.language || "") ? "ru" : "en"; }
+const EN = {
+"frame970 — консоль": "frame970 — console",
+"Подключиться": "Connect",
+"Отключиться": "Disconnect",
+"показать все устройства": "show all devices",
+"не подключено": "not connected",
+"Нужен Chrome/Edge с Web Bluetooth. Имя метки: OD- и четыре цифры MAC (OD-96C1), или своё (см. карточку OpenDisplay); если метки нет в списке, отметьте «показать все устройства». Метка засыпает через ~10 с после включения, если к ней не подключиться — подключайтесь сразу после подачи питания или после пробуждения.": "Needs Chrome/Edge with Web Bluetooth. Tag name: OD- and four MAC digits (OD-96C1), or your own (see the OpenDisplay card); if the tag is not in the list, tick “show all devices”. The tag goes to sleep about 10 s after power-up if nobody connects: connect right after power is applied or after a wake-up.",
+"Светодиод": "LED",
+"Красный": "Red",
+"Зелёный": "Green",
+"Синий": "Blue",
+"Крас. выкл": "Red off",
+"Зел. выкл": "Green off",
+"Син. выкл": "Blue off",
+"Включается на ~20 с, на это время сон отключён.": "Lights for ~20 s; sleep is disabled meanwhile.",
+"Слайды (флеш метки)": "Slides (tag flash)",
+"слот": "slot",
+"Список": "List",
+"Показать на панели": "Show on panel",
+"Проверить CRC": "Check CRC",
+"Стереть": "Erase",
+"Тестовая картинка в слот": "Test picture to slot",
+"Связь (MTU)": "Link (MTU)",
+"очистка от остаточных изображений:": "clean-up of ghost images:",
+"вся панель белым, около минуты": "whole panel white, about a minute",
+"белым": "white",
+"сначала чёрным, потом белым, около двух минут": "black first, then white, about two minutes",
+"чёрным, потом белым": "black, then white",
+"вписать": "fit",
+"заполнить (обрезать)": "fill (crop)",
+"целиком (поля белые)": "whole picture (white margins)",
+"растянуть": "stretch",
+"поворот": "rotation",
+"растр": "dither",
+"Флойд–Стейнберг": "Floyd–Steinberg",
+"без растра": "no dithering",
+"Какими цветами считать панель": "Which colours to assume for the panel",
+"палитра: измеренная": "palette: measured",
+"палитра: номинальная": "palette: nominal",
+"метка висит «вверх ногами»: повернуть весь кадр на 180° (запоминается)": "tag hangs upside down: rotate the whole frame by 180° (remembered)",
+"калибровочные таблицы:": "calibration charts:",
+"поля четырёх цветов, линейки смешения, тонкие линии, шахматки": "fields of the four colours, mixing rulers, thin lines, checkerboards",
+"Цвета и смешение": "Colours and mixing",
+"градиенты и серые плашки, растр Флойда–Стейнберга": "gradients and grey patches, Floyd–Steinberg dithering",
+"Градиенты": "Gradients",
+"сетка, круг, диагонали, полосы, градации, пакеты линий": "grid, circle, diagonals, stripes, tone steps, line groups",
+"ТВ-таблица": "TV chart",
+"запись": "write",
+"без подтверждения (быстро)": "without acknowledgement (fast)",
+"с подтверждением (надёжно)": "with acknowledgement (reliable)",
+"Загрузить в слот": "Upload to slot",
+"Прервать": "Abort",
+"Выберите картинку: она уменьшается до 672×960 (портрет), приводится к 4 цветам (белый, чёрный, красный, жёлтый) и передаётся в сыром виде, 161 280 байт.": "Choose a picture: it is scaled to 672×960 (portrait), reduced to 4 colours (white, black, red, yellow) and sent raw, 161 280 bytes.",
+"Слайдшоу": "Slideshow",
+"включено": "enabled",
+"менять каждые": "change every",
+"мин": "min",
+"слоты:": "slots:",
+"метка просыпается и слушает каждые": "the tag wakes and listens every",
+"10 с": "10 s",
+"30 с": "30 s",
+"60 с": "60 s",
+"2 мин": "2 min",
+"4 мин": "4 min",
+"очистка панели": "panel clean-up",
+"не делать": "never",
+"перед каждым слайдом": "before every slide",
+"каждый 3-й": "every 3rd",
+"каждый 5-й": "every 5th",
+"каждый 10-й": "every 10th",
+"каждый 25-й": "every 25th",
+"Применить": "Apply",
+"Прочитать с метки": "Read from tag",
+"Следующий слайд сейчас": "Next slide now",
+"Между проверками метка спит. Чтобы подключиться (выключить слайдшоу, сменить интервал), нажмите «Подключиться» и подождите: окно связи открывается после каждого пробуждения, не дольше чем через выбранный интервал. Чем реже просыпается метка, тем дольше работает батарея. Выключенное слайдшоу оставляет метку всегда на связи.": "Between checks the tag sleeps. To connect (switch the slideshow off, change the interval) press “Connect” and wait: a connection window opens after every wake-up, at most one chosen interval away. The less often the tag wakes, the longer the battery lasts. With the slideshow off the tag stays connectable all the time.",
+"Прошивка понимает команды OpenDisplay (двухбайтовые, начинаются с 00). Здесь можно проверить их без Home Assistant: версия, конфигурация и загрузка текущей картинки прямой записью 0070 / 0071 / 0072. Картинка сохраняется в выбранный слот и сразу показывается.": "The firmware understands OpenDisplay commands (two bytes, starting with 00). Here you can try them without Home Assistant: version, configuration and uploading the current picture by direct write 0070 / 0071 / 0072. The picture is stored in the chosen slot and shown at once.",
+"Версия (0043)": "Version (0043)",
+"Конфигурация (0040)": "Configuration (0040)",
+"поворот потока": "stream rotation",
+"1: строки в обратном порядке": "1: lines in reverse order",
+"2: пиксели строки в обратном порядке": "2: pixels of a line in reverse order",
+"0: как есть (зеркально)": "0: as is (mirrored)",
+"3: оба (зеркально)": "3: both (mirrored)",
+"Записать в метку (4D)": "Write to tag (4D)",
+"имя метки": "tag name",
+"до 5 символов": "up to 5 characters",
+"Задать": "Set",
+"Сбросить (OD-xxxx)": "Reset (OD-xxxx)",
+"Имя всегда выглядит как OD-… (так метку находят клиенты OpenDisplay). Вместо четырёх цифр MAC можно задать свой хвост до 5 латинских символов, цифр и знаков, например OD-Milan. Он виден в списке устройств и при сканировании. «Сбросить» возвращает OD- и две последние пары цифр MAC.": "The name always looks like OD-… (this is how OpenDisplay clients find the tag). Instead of the four MAC digits you can set your own tail of up to 5 Latin letters, digits and signs, for example OD-Milan. It shows in the device list and when scanning. “Reset” brings back OD- and the last two MAC bytes.",
+"чанк": "chunk",
+"байт": "bytes",
+"Загрузить по OpenDisplay": "Upload via OpenDisplay",
+"Загружается картинка, подготовленная выше (та же, что идёт в слот).": "Uploads the picture prepared above (the same that goes to the slot).",
+"Панель": "Panel",
+"Температура панели (32)": "Panel temperature (32)",
+"Нарисовать тестовую картинку (30, около 40 с)": "Draw the test picture (30, about 40 s)",
+"Только проход 0 (31 00)": "Pass 0 only (31 00)",
+"Только проход 1 (31 01)": "Pass 1 only (31 01)",
+"Выключить панель (33)": "Panel off (33)",
+"Во время рисования метка занята и отвечает только строками лога. Не отключайтесь до строки «epd: done».": "While drawing the tag is busy and answers only with log lines. Do not disconnect before the line “epd: done”.",
+"Скан I²C (20)": "I²C scan (20)",
+"Следить за PC4 (24, 20 с)": "Watch PC4 (24, 20 s)",
+"Следить за всеми пинами (25, 20 с)": "Watch all pins (25, 20 s)",
+"Регистры чипа (26)": "Chip registers (26)",
+"Детектор + опрос флагов (27, 60 с)": "Detector + flag polling (27, 60 s)",
+"Записать настройку как в стоке (28)": "Write the setting as the stock firmware (28)",
+"Тест записи EEPROM (29)": "EEPROM write test (29)",
+"Тест записи регистров (2A)": "Register write test (2A)",
+"PC6 при обмене с чипом:": "PC6 during chip access:",
+"низкий (2B 00)": "low (2B 00)",
+"высокий (2B 01)": "high (2B 01)",
+"адрес (hex)": "address (hex)",
+"Прочитать (21)": "Read (21)",
+"Во время слежения приложите телефон к метке и считайте её (например, NFC Tools): ждём, какой пин изменится.": "While watching, hold a phone to the tag and read it (for example with NFC Tools): we wait to see which pin changes.",
+"Питание": "Power",
+"Статус (02)": "Status (02)",
+"глубокий сон, с": "deep sleep, s",
+"Уснуть (01)": "Sleep (01)",
+"авто-сон, с": "auto sleep, s",
+"Задать (04)": "Set (04)",
+"Отключить авто-сон": "Disable auto sleep",
+"Состояние": "Status",
+"Питание:": "Supply:",
+"под нагрузкой (обновление панели):": "under load (panel refresh):",
+"Температура панели:": "Panel temperature:",
+"Обновить (4F 03)": "Refresh (4F 03)",
+"Измерить температуру панели (32)": "Measure panel temperature (32)",
+"светодиод": "LED",
+"все события": "all events",
+"только загрузка, ошибки, низкий заряд": "boot, errors and low battery only",
+"выключен": "off",
+"Задать (4F 04)": "Set (4F 04)",
+"Питание: литиевый элемент 3 В; норма выше 2,7 В, ниже 2,7 В «низкое», ниже 2,5 В «критическое» (красные вспышки). Измерение без калибровки, точность около ±5 %. Температуру панели метка читает при каждом обновлении, отдельное измерение включает панель примерно на секунду. Значения обновляются раз в 30 с, пока вы подключены.": "Supply: 3 V lithium cell; normal above 2.7 V, below 2.7 V “low”, below 2.5 V “critical” (red flashes). Not calibrated, accuracy about ±5 %. The tag reads the panel temperature at every refresh; a separate measurement powers the panel for about a second. Values refresh every 30 s while you are connected.",
+"Система": "System",
+"мощность радио": "radio power",
+"+10 дБм (дальше, больше ток)": "+10 dBm (farther, more current)",
+"+7 дБм": "+7 dBm",
+"+3 дБм (по умолчанию)": "+3 dBm (default)",
+"0 дБм": "0 dBm",
+"−5 дБм": "−5 dBm",
+"−11 дБм": "−11 dBm",
+"−19 дБм (только рядом)": "−19 dBm (close range only)",
+"Задать (4F 01)": "Set (4F 01)",
+"сторожевой таймер (15 с)": "watchdog (15 s)",
+"Применить (4F 02)": "Apply (4F 02)",
+"Показать (4F 03)": "Show (4F 03)",
+"Перезагрузить метку (4F A5)": "Reboot tag (4F A5)",
+"Мощность и сторожевой таймер хранятся в метке. Если связь на расстоянии пропадает, поднимите мощность; для работы рядом её можно снизить ради батареи. Сторожевой таймер перезапускает метку, если прошивка зависла дольше 15 с. «Статус (02)» показывает текущие значения.": "Radio power and the watchdog are stored in the tag. If the link drops at a distance, raise the power; for use nearby it can be lowered to save battery. The watchdog restarts the tag if the firmware hangs for more than 15 s. “Status (02)” shows the current values.",
+"Произвольная команда": "Custom command",
+"hex, напр. 11 01 00": "hex, e.g. 11 01 00",
+"Отправить": "Send",
+"Лог": "Log",
+"Копировать": "Copy",
+"Скачать .txt": "Download .txt",
+"Очистить": "Clear",
+"Датчик чипа (сырое значение):": "Chip sensor (raw value):",
+"подключение…": "connecting…",
+"подключено: ": "connected: ",
+"Web Bluetooth недоступен в этом браузере": "Web Bluetooth is not available in this browser",
+"— связь потеряна —": "— link lost —",
+"— подключено к ": "— connected to ",
+"ошибка: ": "error: ",
+"нужно чётное число hex-цифр": "an even number of hex digits is needed",
+"не больше 20 байт": "not more than 20 bytes",
+"нет соединения": "not connected",
+"ошибка отправки: ": "send error: ",
+"лог скопирован": "log copied",
+"не удалось скопировать: ": "could not copy: ",
+"Готово к загрузке: 161 280 байт, CRC ": "Ready to upload: 161 280 bytes, CRC ",
+" (калибровочная таблица)": " (calibration chart)",
+"не удалось открыть картинку": "could not open the picture",
+" В": " V",
+"нет данных": "no data",
+"нет данных (сырое значение, мВ: ": "no data (raw value, mV: ",
+"ещё не измерялось": "not measured yet",
+"критически низкое": "critically low",
+"низкое": "low",
+"норма": "normal",
+"ещё не измерялась": "not measured yet",
+" с": " s",
+" мин": " min",
+" назад)": " ago)",
+"нет ответа от метки": "no answer from the tag",
+"Метка стирает слот…": "The tag is erasing the slot…",
+"загрузка: чанк ": "upload: chunk ",
+" Б, окно ": " B, window ",
+"без подтверждения": "without acknowledgement",
+"с подтверждением": "with acknowledgement",
+"прервано": "aborted",
+"неверное подтверждение: ": "wrong acknowledgement: ",
+" из ": " of ",
+" КБ, ": " KB, ",
+" КБ/с": " KB/s",
+"Загружено за ": "Uploaded in ",
+" с. ": " s. ",
+". Теперь можно «Показать на панели».": ". Now you can press “Show on panel”.",
+"загрузка не удалась: ": "upload failed: ",
+"Не удалось: ": "Failed: ",
+"нет ответа на 00 ": "no answer to 00 ",
+"устройство ответило FF ": "the device answered FF ",
+"OD версия ": "OD version ",
+"система": "system",
+"производитель": "manufacturer",
+"питание": "power",
+"дисплей": "display",
+"пакет ": "packet ",
+"дисплей ": "display ",
+", схема цветов ": ", colour scheme ",
+", поворот ": ", rotation ",
+", режимы передачи 0x": ", transmission modes 0x",
+"OD конфигурация (": "OD configuration (",
+" Б): ": " B): ",
+"имя: 1–5 символов ASCII после OD-": "name: 1–5 ASCII characters after OD-",
+"Перезагрузить метку? Связь прервётся.": "Reboot the tag? The link will drop.",
+"Данные отправлены, проверка…": "Data sent, verifying…",
+"Принято за ": "Accepted in ",
+" с. Панель обновляется (до минуты)…": " s. The panel is refreshing (up to a minute)…",
+"обновление панели не уложилось в таймаут": "the panel refresh did not finish in time",
+"Готово: картинка загружена по OpenDisplay и показана.": "Done: the picture was uploaded via OpenDisplay and is shown."
+};
+const T = s => (LANG === "en" && EN[s] !== undefined) ? EN[s] : s;
+const I18N = [];
+function i18nCollect(){
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  while (w.nextNode()){
+    const n = w.currentNode;
+    if (/^(SCRIPT|STYLE)$/.test(n.parentNode.nodeName) || !/[А-Яа-яЁё]/.test(n.nodeValue)) continue;
+    I18N.push({n, ru: n.nodeValue});
+  }
+  document.querySelectorAll("[placeholder],[title]").forEach(e => {
+    for (const a of ["placeholder", "title"]){ const v = e.getAttribute(a); if (v && /[А-Яа-яЁё]/.test(v)) I18N.push({e, a, ru: v}); }
+  });
+}
+function i18nApply(){
+  document.documentElement.lang = LANG;
+  for (const it of I18N){
+    const key = it.ru.replace(/\s+/g, " ").trim();
+    let v = it.ru;
+    if (LANG === "en" && EN[key] !== undefined) v = it.ru.match(/^\s*/)[0] + EN[key] + it.ru.match(/\s*$/)[0];
+    if (it.n) it.n.nodeValue = v; else it.e.setAttribute(it.a, v);
+  }
+  const a = document.getElementById("langRu"), b = document.getElementById("langEn");
+  if (a && b){ a.className = LANG === "ru" ? "pri" : ""; b.className = LANG === "en" ? "pri" : ""; }
+}
+function setLang(l){
+  LANG = l;
+  try { localStorage.setItem("lang", l); } catch (e) {}
+  i18nApply();
+  if (typeof setState === "function") setState(...lastSt);
+  if (typeof lastSys !== "undefined" && lastSys) lineHook("SYS tx=" + lastSys[1] + " wd=" + lastSys[2] + " led=" + lastSys[3] + " v=" + lastSys[4] + " vl=" + lastSys[5] + " t=" + lastSys[6] + " ta=" + lastSys[7] + (lastSys[8] ? " vr=" + lastSys[8] + " ts=" + lastSys[9] : ""));
+}
+</script>
+<script>
 const SVC = 0x2446, CHR = 0x2446;
 let dev = null, chr = null, buf = "";
 let srcImg = null, frame = null, upAbort = false, upBusy = false;
@@ -296,8 +553,10 @@ function add(text, cls){
   logEl.appendChild(s);
   if (stick) logEl.scrollTop = logEl.scrollHeight;
 }
-function setState(on, txt){
-  $("st").textContent = txt;
+let lastSt = [false, "не подключено", ""];
+function setState(on, txt, extra){
+  lastSt = [on, txt, extra || ""];
+  $("st").textContent = T(txt) + (extra || "");
   $("bConn").disabled = on;
   $("bDisc").disabled = !on;
   document.querySelectorAll("[data-c],#bNfcRead,#bSleep,#bAuto,#bRaw,.nc").forEach(b => b.disabled = !on);
@@ -318,7 +577,7 @@ function onNotify(ev){
 }
 
 async function connect(){
-  if (!navigator.bluetooth){ add("Web Bluetooth недоступен в этом браузере", "sys"); return; }
+  if (!navigator.bluetooth){ add(T("Web Bluetooth недоступен в этом браузере"), "sys"); return; }
   try{
     const all = $("showAll") && $("showAll").checked;      // a tag with a custom name, or a browser that does not list it
     dev = await navigator.bluetooth.requestDevice(all
@@ -326,7 +585,7 @@ async function connect(){
       : {filters:[{namePrefix:"OD"}, {namePrefix:"n970-"}], optionalServices:[SVC]});
     dev.addEventListener("gattserverdisconnected", () => {
       if (buf.length){ add(buf); buf = ""; }
-      add("— связь потеряна —", "sys");
+      add(T("— связь потеряна —"), "sys");
       setState(false, "не подключено");
     });
     setState(false, "подключение…");
@@ -335,33 +594,33 @@ async function connect(){
     chr = await svc.getCharacteristic(CHR);
     chr.addEventListener("characteristicvaluechanged", onNotify);
     await chr.startNotifications();
-    setState(true, "подключено: " + dev.name);
-    add("— подключено к " + dev.name + " —", "sys");
+    setState(true, "подключено: ", dev.name);
+    add(T("— подключено к ") + dev.name + " —", "sys");
   }catch(e){
-    add("ошибка: " + e.message, "sys");
+    add(T("ошибка: ") + e.message, "sys");
     setState(false, "не подключено");
   }
 }
 
 function parseHex(s){
   const t = s.replace(/[^0-9a-fA-F]/g, "");
-  if (!t.length || t.length % 2) throw new Error("нужно чётное число hex-цифр");
+  if (!t.length || t.length % 2) throw new Error(T("нужно чётное число hex-цифр"));
   const out = [];
   for (let i = 0; i < t.length; i += 2) out.push(parseInt(t.substr(i,2), 16));
-  if (out.length > 20) throw new Error("не больше 20 байт");
+  if (out.length > 20) throw new Error(T("не больше 20 байт"));
   return Uint8Array.from(out);
 }
 const hx = a => Array.from(a).map(b => b.toString(16).padStart(2,"0")).join(" ");
 const h2 = n => (n & 255).toString(16).padStart(2,"0");
 
 async function send(s, strict){
-  if (!chr){ add("нет соединения", "sys"); if (strict) throw new Error("нет соединения"); return; }
+  if (!chr){ add(T("нет соединения"), "sys"); if (strict) throw new Error(T("нет соединения")); return; }
   try{
     const a = typeof s === "string" ? parseHex(s) : s;
     add("→ " + hx(a), "tx");
     if (chr.writeValueWithoutResponse) await chr.writeValueWithoutResponse(a);
     else await chr.writeValue(a);
-  }catch(e){ add("ошибка отправки: " + e.message, "sys"); if (strict) throw e; }
+  }catch(e){ add(T("ошибка отправки: ") + e.message, "sys"); if (strict) throw e; }
 }
 
 $("bConn").onclick = connect;
@@ -379,8 +638,8 @@ $("raw").addEventListener("keydown", e => { if (e.key === "Enter") $("bRaw").cli
 
 $("bClear").onclick = () => { logEl.textContent = ""; plain = ""; };
 $("bCopy").onclick = async () => {
-  try{ await navigator.clipboard.writeText(plain); add("лог скопирован", "sys"); }
-  catch(e){ add("не удалось скопировать: " + e.message, "sys"); }
+  try{ await navigator.clipboard.writeText(plain); add(T("лог скопирован"), "sys"); }
+  catch(e){ add(T("не удалось скопировать: ") + e.message, "sys"); }
 };
 $("bSave").onclick = () => {
   const a = document.createElement("a");
@@ -601,7 +860,7 @@ function render(){
   for (let i = 0; i < PW * PH; i++){ const p = PAL[idx[i]]; im.data[i*4] = p[0]; im.data[i*4+1] = p[1]; im.data[i*4+2] = p[2]; im.data[i*4+3] = 255; }
   pg.putImageData(im, 0, 0);
   frame = toScan(flipOn() ? rotate180(idx) : idx);       // the preview shows the picture as it should be read, the frame is turned if the tag hangs upside down
-  $("upinfo").textContent = "Готово к загрузке: 161 280 байт, CRC " + crc32(frame).toString(16).padStart(8, "0") + (chartIdx ? " (калибровочная таблица)" : "");
+  $("upinfo").textContent = T("Готово к загрузке: 161 280 байт, CRC ") + crc32(frame).toString(16).padStart(8, "0") + (chartIdx ? T(" (калибровочная таблица)") : "");
   refreshUp();
 }
 
@@ -610,7 +869,7 @@ $("file").onchange = e => {
   if (!f) return;
   const img = new Image();
   img.onload = () => { srcImg = img; chartIdx = null; chartFn = null; render(); };
-  img.onerror = () => add("не удалось открыть картинку", "sys");
+  img.onerror = () => add(T("не удалось открыть картинку"), "sys");
   img.src = URL.createObjectURL(f);
 };
 ["fit", "rot", "dith"].forEach(id => $(id).onchange = render);
@@ -626,19 +885,21 @@ $("pal").onchange = () => { const m = $("pal").value === "1"; setPalette(m); try
 
 /* lines from the tag that start with "UP " are queued for the upload code */
 const upq = []; let upw = null;
-let sysQuiet = 0;
+let sysQuiet = 0, lastSys = null;
 function lineHook(t){
-  const sy = /^SYS tx=(\d+) wd=(\d+) led=(\d+) v=(\d+) vl=(\d+) t=(-?\d+) ta=(-?\d+)/.exec(t);
+  const sy = /^SYS tx=(\d+) wd=(\d+) led=(\d+) v=(\d+) vl=(\d+) t=(-?\d+) ta=(-?\d+)(?: vr=(-?\d+) ts=(-?\d+))?/.exec(t);
   if (sy){                       // supply, temperature, and the stored system settings
     $("txIdx").value = sy[1]; $("wdOn").checked = sy[2] === "1"; $("ledMode").value = sy[3];
     const v = +sy[4], vl = +sy[5];
-    $("stV").textContent = v ? (v / 1000).toFixed(2) + " В" : "нет данных";
-    $("stVL").textContent = vl ? (vl / 1000).toFixed(2) + " В" : "ещё не измерялось";
-    $("stBat").textContent = !v ? "" : v < 2500 ? "критически низкое" : v < 2700 ? "низкое" : "норма";
+    lastSys = sy;
+    $("stV").textContent = v ? (v / 1000).toFixed(2) + T(" В") : (sy[8] ? T("нет данных (сырое значение, мВ: ") + sy[8] + ")" : T("нет данных"));
+    $("stVL").textContent = vl ? (vl / 1000).toFixed(2) + T(" В") : T("ещё не измерялось");
+    $("stBat").textContent = !v ? "" : v < 2500 ? T("критически низкое") : v < 2700 ? T("низкое") : T("норма");
     $("stBat").style.color = !v ? "" : v < 2500 ? "#d33" : v < 2700 ? "#c80" : "#2a2";
     const ta = +sy[7];
-    $("stT").textContent = ta < 0 ? "ещё не измерялась" : sy[6] + " °C";
-    $("stTA").textContent = ta < 0 ? "" : "(" + (ta < 90 ? ta + " с" : Math.round(ta / 60) + " мин") + " назад)";
+    $("stT").textContent = ta < 0 ? T("ещё не измерялась") : sy[6] + " °C";
+    $("stTA").textContent = ta < 0 ? "" : "(" + (ta < 90 ? ta + T(" с") : Math.round(ta / 60) + T(" мин")) + T(" назад)");
+    $("stTS").textContent = sy[9] || "—";
     return;
   }
   const ss = /^SS (on|off) every=(\d+) mask=([0-9A-F]+) poll=(\d+) clean=(\d+)\/(\d+)/.exec(t);
@@ -648,7 +909,7 @@ function lineHook(t){
     document.querySelectorAll(".ssS").forEach(c => c.checked = !!(m & +c.dataset.b));
     $("ssPoll").value = ss[4];
     const cl = $("ssClean"); cl.value = ss[5];
-    if (cl.value !== ss[5]){ const o = document.createElement("option"); o.value = ss[5]; o.textContent = "каждый " + ss[5] + "-й"; cl.appendChild(o); cl.value = ss[5]; }
+    if (cl.value !== ss[5]){ const o = document.createElement("option"); o.value = ss[5]; o.textContent = LANG === "en" ? "every " + ss[5] + "th" : "каждый " + ss[5] + "-й"; cl.appendChild(o); cl.value = ss[5]; }
     $("ssCleanMode").value = ss[6];
     return;
   }
@@ -661,7 +922,7 @@ function nextUp(ms){
   return new Promise((res, rej) => {
     const tick = () => {
       if (upq.length) return res(upq.shift());
-      const timer = setTimeout(() => { upw = null; rej(new Error("нет ответа от метки")); }, ms);
+      const timer = setTimeout(() => { upw = null; rej(new Error(T("нет ответа от метки"))); }, ms);
       upw = () => { clearTimeout(timer); tick(); };
     };
     tick();
@@ -673,7 +934,7 @@ async function nextUpLine(re, ms){
     const t = await nextUp(Math.max(100, end - Date.now()));
     if (/^UP FAIL/.test(t)) throw new Error(t);
     if (re.test(t)) return t;
-    if (Date.now() > end) throw new Error("нет ответа от метки");
+    if (Date.now() > end) throw new Error(T("нет ответа от метки"));
   }
 }
 
@@ -686,17 +947,17 @@ async function upload(slot, data){
   prog.value = 0;
   try{
     const crc = crc32(data);
-    info.textContent = "Метка стирает слот…";
+    info.textContent = T("Метка стирает слот…");
     const win = 8;
     await send(Uint8Array.from([0x42, slot, ...le32(data.length), ...le32(crc), win]), true);
     const rdy = await nextUpLine(/^UP READY/, 90000);
     const chunk = +/chunk=(\d+)/.exec(rdy)[1], w = +/win=(\d+)/.exec(rdy)[1];
     const noResp = $("wmode").value === "nr" && chr.writeValueWithoutResponse;
-    add("загрузка: чанк " + chunk + " Б, окно " + w + ", " + (noResp ? "без подтверждения" : "с подтверждением"), "sys");
+    add(T("загрузка: чанк ") + chunk + T(" Б, окно ") + w + ", " + (noResp ? T("без подтверждения") : T("с подтверждением")), "sys");
     let off = 0, seq = 0, since = 0;
     const t0 = performance.now();
     while (off < data.length){
-      if (upAbort) throw new Error("прервано");
+      if (upAbort) throw new Error(T("прервано"));
       const n = Math.min(chunk, data.length - off);
       const pkt = new Uint8Array(3 + n);
       pkt[0] = 0x43; pkt[1] = seq & 255; pkt[2] = seq >> 8;
@@ -706,20 +967,20 @@ async function upload(slot, data){
       if (since >= w || off >= data.length){
         since = 0;
         const a = await nextUpLine(/^UP ACK/, 15000);
-        if (+a.slice(7) !== off) throw new Error("неверное подтверждение: " + a);
+        if (+a.slice(7) !== off) throw new Error(T("неверное подтверждение: ") + a);
         prog.value = 100 * off / data.length;
         const sec = (performance.now() - t0) / 1000;
-        info.textContent = Math.round(off / 1024) + " из " + Math.round(data.length / 1024) + " КБ, " + (off / 1024 / sec).toFixed(1) + " КБ/с";
+        info.textContent = Math.round(off / 1024) + T(" из ") + Math.round(data.length / 1024) + T(" КБ, ") + (off / 1024 / sec).toFixed(1) + T(" КБ/с");
       }
     }
     await send(Uint8Array.from([0x44]), true);
     const ok = await nextUpLine(/^UP OK/, 30000);
     const sec = (performance.now() - t0) / 1000;
-    info.textContent = "Загружено за " + sec.toFixed(1) + " с. " + ok + ". Теперь можно «Показать на панели».";
+    info.textContent = T("Загружено за ") + sec.toFixed(1) + T(" с. ") + ok + T(". Теперь можно «Показать на панели».");
     prog.value = 100;
   }catch(e){
-    add("загрузка не удалась: " + e.message, "sys");
-    info.textContent = "Не удалось: " + e.message;
+    add(T("загрузка не удалась: ") + e.message, "sys");
+    info.textContent = T("Не удалось: ") + e.message;
     try{ await send(Uint8Array.from([0x49])); }catch(_){}
   }finally{
     upBusy = false; refreshUp();
@@ -749,7 +1010,7 @@ $("bUpStop").onclick = () => { upAbort = true; };
 const odWaits = {};
 function odWait(cmd, ms){
   return new Promise((res, rej) => {
-    const t = setTimeout(() => { delete odWaits[cmd]; rej(new Error("нет ответа на 00 " + h2(cmd))); }, ms);
+    const t = setTimeout(() => { delete odWaits[cmd]; rej(new Error(T("нет ответа на 00 ") + h2(cmd))); }, ms);
     odWaits[cmd] = {res, rej, t};
   });
 }
@@ -758,7 +1019,7 @@ function odHook(b){
   add("OD ← " + hx(b));
   const w = odWaits[b[1]];
   if (b[0] === 0xFF){
-    if (w){ clearTimeout(w.t); delete odWaits[b[1]]; w.rej(new Error("устройство ответило FF " + h2(b[1]))); }
+    if (w){ clearTimeout(w.t); delete odWaits[b[1]]; w.rej(new Error(T("устройство ответило FF ") + h2(b[1]))); }
     return;
   }
   if (b[1] === 0x40){                         // configuration: chunk 0 = 00 40 0000 len16 data, next chunks 00 40 nnnn data
@@ -767,30 +1028,30 @@ function odHook(b){
     if (odCfg.length >= odCfgTotal && odCfgTotal) odShowCfg(Uint8Array.from(odCfg));
   }
   if (b[1] === 0x43 && b.length >= 5){
-    add("OD версия " + b[2] + "." + b[3] + " " + String.fromCharCode(...b.subarray(5, 5 + b[4])), "sys");
+    add(T("OD версия ") + b[2] + "." + b[3] + " " + String.fromCharCode(...b.subarray(5, 5 + b[4])), "sys");
   }
   if (w){ clearTimeout(w.t); delete odWaits[b[1]]; w.res(b); }
 }
 function odShowCfg(d){                       // outer packet: len16 version, packets (number, id, payload), crc16
-  const names = {1: "система", 2: "производитель", 4: "питание", 32: "дисплей"}, sizes = {1: 22, 2: 22, 4: 30, 32: 46};
+  const names = {1: T("система"), 2: T("производитель"), 4: T("питание"), 32: T("дисплей")}, sizes = {1: 22, 2: 22, 4: 30, 32: 46};
   let p = 3; const parts = [];
   while (p < d.length - 2){
     const id = d[p + 1], n = sizes[id];
-    if (!n) { parts.push("пакет " + id + "?"); break; }
+    if (!n) { parts.push(T("пакет ") + id + "?"); break; }
     if (id === 32){
       const q = d.subarray(p + 2), W = q[4] | (q[5] << 8), H = q[6] | (q[7] << 8);
-      parts.push("дисплей " + W + "×" + H + ", схема цветов " + q[21] + ", поворот " + q[14] + ", режимы передачи 0x" + q[22].toString(16));
-    } else parts.push(names[id] || ("пакет " + id));
+      parts.push(T("дисплей ") + W + "×" + H + T(", схема цветов ") + q[21] + T(", поворот ") + q[14] + T(", режимы передачи 0x") + q[22].toString(16));
+    } else parts.push(names[id] || (T("пакет ") + id));
     p += 2 + n;
   }
-  add("OD конфигурация (" + d.length + " Б): " + parts.join("; "), "sys");
+  add(T("OD конфигурация (") + d.length + T(" Б): ") + parts.join("; "), "sys");
 }
 $("bOdVer").onclick = () => send("00 43");
 $("bOdCfg").onclick = () => send("00 40");
 $("bOdMsd").onclick = () => send("00 44");
 $("bNameSet").onclick = () => {
   const t = $("devName").value.trim();
-  if (!/^[\x20-\x7e]{1,5}$/.test(t)){ add("имя: 1–5 символов ASCII после OD-", "sys"); return; }
+  if (!/^[\x20-\x7e]{1,5}$/.test(t)){ add(T("имя: 1–5 символов ASCII после OD-"), "sys"); return; }
   send(Uint8Array.from([0x4e, ...Array.from(t).map(c => c.charCodeAt(0))]));
 };
 $("bNameDef").onclick = () => send("4e");
@@ -801,7 +1062,7 @@ setInterval(() => { if (chr && dev && dev.gatt.connected && !upBusy){ sysQuiet++
 $("bTx").onclick = () => send("4f 01 " + h2(+$("txIdx").value));
 $("bWd").onclick = () => send("4f 02 " + ($("wdOn").checked ? "01" : "00"));
 $("bSys").onclick = () => send("4f 03");
-$("bReboot").onclick = () => { if (confirm("Перезагрузить метку? Связь прервётся.")) send("4f a5"); };
+$("bReboot").onclick = () => { if (confirm(T("Перезагрузить метку? Связь прервётся."))) send("4f a5"); };
 $("bOdSet").onclick = () => send("4d " + h2(+$("odMode").value) + " " + h2(+$("odSlot").value));
 async function odUpload(data){
   upBusy = true; refreshUp();
@@ -810,12 +1071,12 @@ async function odUpload(data){
   try{
     const mode = +$("odMode").value, stream = odStream(data, mode);
     const chunk = Math.max(10, Math.min(230, Math.round(+$("odChunk").value || 230)));
-    info.textContent = "Метка стирает слот…";
+    info.textContent = T("Метка стирает слот…");
     let w = odWait(0x70, 90000);
     await send(Uint8Array.from([0x00, 0x70]), true); await w;
     const t0 = performance.now();
     for (let off = 0; off < stream.length; off += chunk){
-      if (upAbort) throw new Error("прервано");
+      if (upAbort) throw new Error(T("прервано"));
       const n = Math.min(chunk, stream.length - off);
       const pkt = new Uint8Array(2 + n); pkt[0] = 0x00; pkt[1] = 0x71; pkt.set(stream.subarray(off, off + n), 2);
       w = odWait(0x71, 5000);
@@ -823,21 +1084,21 @@ async function odUpload(data){
       await w;
       if (!((off / chunk) & 15)){
         prog.value = 100 * off / stream.length;
-        info.textContent = Math.round(off / 1024) + " из " + Math.round(stream.length / 1024) + " КБ, " + (off / 1024 / ((performance.now() - t0) / 1000)).toFixed(1) + " КБ/с";
+        info.textContent = Math.round(off / 1024) + T(" из ") + Math.round(stream.length / 1024) + T(" КБ, ") + (off / 1024 / ((performance.now() - t0) / 1000)).toFixed(1) + T(" КБ/с");
       }
     }
     prog.value = 100;
-    info.textContent = "Данные отправлены, проверка…";
+    info.textContent = T("Данные отправлены, проверка…");
     const w73 = odWait(0x73, 120000), w74 = odWait(0x74, 120000);
     w73.catch(() => {}); w74.catch(() => {});
     w = odWait(0x72, 30000);
     await send(Uint8Array.from([0x00, 0x72, 0x00]), true); await w;
-    info.textContent = "Принято за " + ((performance.now() - t0) / 1000).toFixed(1) + " с. Панель обновляется (до минуты)…";
-    await Promise.race([w73, w74.then(() => { throw new Error("обновление панели не уложилось в таймаут"); })]);
-    info.textContent = "Готово: картинка загружена по OpenDisplay и показана.";
+    info.textContent = T("Принято за ") + ((performance.now() - t0) / 1000).toFixed(1) + T(" с. Панель обновляется (до минуты)…");
+    await Promise.race([w73, w74.then(() => { throw new Error(T("обновление панели не уложилось в таймаут")); })]);
+    info.textContent = T("Готово: картинка загружена по OpenDisplay и показана.");
   }catch(e){
     add("OpenDisplay: " + e.message, "sys");
-    info.textContent = "Не удалось: " + e.message;
+    info.textContent = T("Не удалось: ") + e.message;
   }finally{
     for (const k of Object.keys(odWaits)){ clearTimeout(odWaits[k].t); delete odWaits[k]; }
     upBusy = false; refreshUp();
@@ -845,6 +1106,9 @@ async function odUpload(data){
 }
 $("bOdUp").onclick = () => { if (frame) odUpload(frame); };
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+i18nCollect(); i18nApply();
+document.getElementById("langRu").onclick = () => setLang("ru");
+document.getElementById("langEn").onclick = () => setLang("en");
 </script>
 </body>
 </html>

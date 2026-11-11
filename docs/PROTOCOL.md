@@ -37,7 +37,7 @@ pixel in bits 7..6. Colour index: 0 white, 1 black, 2 red, 3 yellow. Scan line `
 | `4F A5` | reboot the tag (about 0.4 s later) |
 | `4F 01 i` | transmit power, i = 0..6: +10, +7, +3 (default), 0, -5, -11, -19 dBm; stored |
 | `4F 02 w` | watchdog 0/1 (default on, 15 s); stored, applied at once |
-| `4F 03` | measure the supply voltage now and report `SYS tx=2 wd=1 led=2 v=3012 vl=2870 t=22 ta=340` (transmit index, watchdog, LED mode, idle supply mV, lowest supply mV during the last panel refresh, panel temperature in C (-99 = not read since power-up), its age in seconds); `02` also shows `tx`, `wd`, `v` |
+| `4F 03` | measure the supply voltage now and report `SYS tx=2 wd=1 led=2 v=3012 vl=2870 t=22 ta=340 vr=3012 ts=345` (transmit index, watchdog, LED mode, idle supply mV, lowest supply mV during the last panel refresh, panel temperature in C (-99 = not read since power-up), its age in seconds, the raw converter reading of the supply before scaling, the raw reading of the chip's own temperature sensor: no conversion to degrees is documented); `02` also shows `tx`, `wd`, `v` |
 | `4F 04 m` | LED mode: 0 off, 1 boot / errors / low battery only, 2 all events (default); stored |
 | `4D mode slot` | OpenDisplay stream orientation (0..3) and target slot (0..3); replies `OD mode=.. slot=..` |
 

@@ -49,6 +49,13 @@ The card "Состояние" (Status) of the control page shows, every 30 secon
 * **Panel temperature.** The panel has its own sensor, read at every refresh (the picture waveform depends on it). "Measure panel temperature"
   powers the panel for about a second and reads it now. The value shows how long ago it was measured. After a deep sleep or a reboot it is
   empty until the next measurement.
+* **Chip sensor (raw value).** The processor has its own temperature sensor. The manufacturer gives no conversion to degrees, so the page shows the
+  raw reading only. It is useful to see changes, not absolute values.
+
+## Language of the control page
+
+The control page speaks Russian and English. The buttons RU / EN in the top right corner switch the language; the choice is remembered in
+the browser. By default the page follows the browser language (Russian, Belarusian and Ukrainian browsers get Russian, all others English).
 
 ## Other settings (card "Система")
 
