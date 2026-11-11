@@ -72,6 +72,11 @@ label{color:var(--mut);font-size:13px}
     <button class="nc" id="bLink">Связь (MTU)</button>
   </div>
   <div class="row">
+    <label>очистка от остаточных изображений:</label>
+    <button class="nc" id="bClean1" title="вся панель белым, около минуты">белым</button>
+    <button class="nc" id="bClean2" title="сначала чёрным, потом белым, около двух минут">чёрным, потом белым</button>
+  </div>
+  <div class="row">
     <input type="file" id="file" accept="image/*" style="width:auto;max-width:100%">
   </div>
   <div class="row">
@@ -118,6 +123,11 @@ label{color:var(--mut);font-size:13px}
   <div class="row">
     <label>метка просыпается и слушает каждые</label>
     <select id="ssPoll"><option value="10">10 с</option><option value="30" selected>30 с</option><option value="60">60 с</option><option value="120">2 мин</option><option value="250">4 мин</option></select>
+    <label>очистка панели</label>
+    <select id="ssClean"><option value="0">не делать</option><option value="1">перед каждым слайдом</option><option value="3">каждый 3-й</option><option value="5">каждый 5-й</option><option value="10">каждый 10-й</option><option value="25">каждый 25-й</option></select>
+    <select id="ssCleanMode"><option value="1">белым</option><option value="2">чёрным, потом белым</option></select>
+  </div>
+  <div class="row">
     <button class="nc pri" id="bSsSet">Применить</button>
     <button class="nc" id="bSsGet">Прочитать с метки</button>
     <button class="nc" id="bSsStep">Следующий слайд сейчас</button>
@@ -511,12 +521,15 @@ $("bCal3").onclick = () => { chartIdx = chartTv(); render(); };
 /* lines from the tag that start with "UP " are queued for the upload code */
 const upq = []; let upw = null;
 function lineHook(t){
-  const ss = /^SS (on|off) every=(\d+) min mask=([0-9A-F]+) poll=(\d+)/.exec(t);
+  const ss = /^SS (on|off) every=(\d+) mask=([0-9A-F]+) poll=(\d+) clean=(\d+)\/(\d+)/.exec(t);
   if (ss){                       // slideshow settings from the tag: fill the form
     $("ssOn").checked = ss[1] === "on"; $("ssEvery").value = ss[2];
     const m = parseInt(ss[3], 16);
     document.querySelectorAll(".ssS").forEach(c => c.checked = !!(m & +c.dataset.b));
     $("ssPoll").value = ss[4];
+    const cl = $("ssClean"); cl.value = ss[5];
+    if (cl.value !== ss[5]){ const o = document.createElement("option"); o.value = ss[5]; o.textContent = "каждый " + ss[5] + "-й"; cl.appendChild(o); cl.value = ss[5]; }
+    $("ssCleanMode").value = ss[6];
     return;
   }
   if (!/^(UP |LINK |slot )/.test(t)) return;
@@ -600,11 +613,13 @@ $("bVerify").onclick = () => send("47 " + h2(slotNo()));
 $("bErase").onclick = () => send("41 " + h2(slotNo()));
 $("bFill").onclick = () => send("46 " + h2(slotNo()));
 $("bLink").onclick = () => send("48");
+$("bClean1").onclick = () => send("34 01");
+$("bClean2").onclick = () => send("34 02");
 $("bSsSet").onclick = () => {
   let every = Math.max(1, Math.min(1080, Math.round(+$("ssEvery").value || 60)));
   $("ssEvery").value = every;
   let mask = 0; document.querySelectorAll(".ssS").forEach(c => { if (c.checked) mask |= +c.dataset.b; });
-  send(Uint8Array.from([0x4A, $("ssOn").checked ? 1 : 0, every & 255, every >> 8, mask, +$("ssPoll").value]));
+  send(Uint8Array.from([0x4A, $("ssOn").checked ? 1 : 0, every & 255, every >> 8, mask, +$("ssPoll").value, +$("ssClean").value, +$("ssCleanMode").value]));
 };
 $("bSsGet").onclick = () => send("4B");
 $("bSsStep").onclick = () => send("4C");

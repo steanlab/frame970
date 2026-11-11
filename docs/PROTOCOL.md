@@ -30,8 +30,8 @@ pixel in bits 7..6. Colour index: 0 white, 1 black, 2 red, 3 yellow. Scan line `
 | `47 ss` | re-read slot `ss` and check its CRC |
 | `48` | `LINK mtu=.. dle tx=.. rx=..`: the negotiated ATT MTU and link packet sizes |
 | `49` | abort an upload |
-| `4A en every16 mask poll` | slideshow settings: `en` 0/1, `every` minutes (little endian, 1..1080), `mask` slots in bits 0..3, `poll` seconds between wake-ups (10..250). Stored in flash. Answers with the `SS ...` line |
-| `4B` | report the slideshow: `SS on every=60 min mask=0F poll=30 s last=1 elapsed=120 s` |
+| `4A en every16 mask poll [clean mode]` | slideshow settings: `en` 0/1, `every` minutes (little endian, 1..1080), `mask` slots in bits 0..3, `poll` seconds between wake-ups (10..250), optional `clean` = clean the panel before every n-th slide (0 = never) and `mode` 1 = white, 2 = black then white. Stored in flash. Answers with the `SS ...` line |
+| `4B` | report the slideshow: `SS on every=60 mask=0F poll=30 clean=0/1 last=1 el=120` (minutes, slot mask, seconds, clean n/mode, last slot shown, seconds elapsed) |
 | `4C` | draw the next slide now |
 
 Any error during an upload gives `UP FAIL reason` and cancels it (wrong sequence number, bad CRC, 30 s without data, disconnect).
@@ -46,4 +46,4 @@ off the tag stays awake and connectable. The settings are an append-only log of 
 
 ## Older commands
 
-`01 nn` deep sleep nn s, `02` status, `04 nn` auto-sleep, `10 11` LED, `20..2B` NFC discovery, `30..33` panel test (see the page).
+`01 nn` deep sleep nn s, `02` status, `04 nn` auto-sleep, `10 11` LED, `20..2B` NFC discovery, `30..33` panel test (see the page), `34 mode` clean the panel against ghost images (1 = white, 2 = black then white, about 1 to 2 minutes).
