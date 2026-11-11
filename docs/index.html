@@ -86,6 +86,7 @@ label{color:var(--mut);font-size:13px}
     <select id="rot"><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select>
     <label>растр</label>
     <select id="dith"><option value="fs">Флойд–Стейнберг</option><option value="none">без растра</option></select>
+    <select id="pal" title="Какими цветами считать панель"><option value="1">палитра: измеренная</option><option value="0">палитра: номинальная</option></select>
   </div>
   <div class="row">
     <label><input type="checkbox" id="flip" checked style="width:auto"> метка висит «вверх ногами»: повернуть весь кадр на 180° (запоминается)</label>
@@ -324,7 +325,17 @@ $("bSave").onclick = () => {
 /* ================= slides: image -> 4 colours -> scan order -> upload ================= */
 /* BEGIN pure (tested in Node) */
 const PW = 672, PH = 960;                       // portrait picture
-const PAL = [[255,255,255],[0,0,0],[190,20,20],[240,205,20]];   // white, black, red, yellow = colour indices 0..3 (tune with real panel colours later)
+const PAL_NOM = [[255,255,255],[0,0,0],[190,20,20],[240,205,20]];       // nominal colours as sRGB 0..255: white, black, red, yellow = colour indices 0..3
+/* Measured on the real 970Q-N panel from RAW photos (2026-11-11), linear light relative to the panel white (W = 1):
+   black is a dark grey (about 6 % of white), red is orange-ish, yellow is golden. See docs/COLOUR.md. */
+const PAL_LIN = [[1,1,1],[0.06,0.06,0.06],[0.70,0.31,0.05],[1,0.70,0.08]];
+const l2s = v => Math.round(255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055));
+const s2l = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+let palMeasured = true;                         // true: measured palette and dithering in linear light, false: nominal colours, dithering on sRGB values (old behaviour)
+let PAL = PAL_LIN.map(c => c.map(l2s));         // colours the preview and the charts draw
+function setPalette(measured){ palMeasured = !!measured; PAL = measured ? PAL_LIN.map(c => c.map(l2s)) : PAL_NOM.map(c => c.slice()); }
+/* source colour (linear light) squeezed into the reachable range: 0 -> black of the panel, 1 -> white of the panel */
+const gmap = v => PAL_LIN[1][0] + v * (1 - PAL_LIN[1][0]);
 
 function crc32(d){
   let t = crc32.t;
@@ -335,26 +346,34 @@ function crc32(d){
 }
 
 /* rgba: Uint8ClampedArray of PW*PH*4 -> idx: Uint8Array PW*PH (row-major portrait), values 0..3 */
-function quantize(rgba, mode){
+function quantize(rgba, mode, noMap){
   const n = PW * PH, idx = new Uint8Array(n);
   const err = new Float32Array(PW * 3 * 2);      // two rows of error
   let cur = 0, nxt = PW * 3;
   const fs = mode === "fs";
+  const lin = palMeasured;                        // measured palette: work in linear light, the way the panel mixes its dots
+  const P = lin ? PAL_LIN : PAL;
+  let lut = null;
+  if (lin){ lut = new Float32Array(256); for (let i = 0; i < 256; i++){ const v = s2l(i); lut[i] = noMap ? v : gmap(v); } }
   for (let y = 0; y < PH; y++){
     const ltr = !fs || (y & 1) === 0;
     for (let k = 0; k < PW; k++){
       const x = ltr ? k : PW - 1 - k, p = y * PW + x;
-      let r = rgba[p*4], g = rgba[p*4+1], b = rgba[p*4+2];
+      let r, g, b;
+      if (lin){ r = lut[rgba[p*4]]; g = lut[rgba[p*4+1]]; b = lut[rgba[p*4+2]]; }
+      else { r = rgba[p*4]; g = rgba[p*4+1]; b = rgba[p*4+2]; }
       if (fs){ r += err[cur + x*3]; g += err[cur + x*3+1]; b += err[cur + x*3+2]; }
       let best = 0, bd = 1e9;
       for (let c = 0; c < 4; c++){
-        const dr = r - PAL[c][0], dg = g - PAL[c][1], db = b - PAL[c][2];
-        const d = dr*dr + dg*dg + db*db;
+        const dr = r - P[c][0], dg = g - P[c][1], db = b - P[c][2];
+        let d = dr*dr + dg*dg + db*db;
+        if (lin){ const m = (dr + dg + db) / 3; d += 2 * (d - 3 * m * m); }      // a colour error counts three times as much as a brightness error, so greys are not sprinkled with red or yellow dots
         if (d < bd){ bd = d; best = c; }
       }
       idx[p] = best;
       if (fs){
-        const er = r - PAL[best][0], eg = g - PAL[best][1], eb = b - PAL[best][2];
+        let er = r - P[best][0], eg = g - P[best][1], eb = b - P[best][2];
+        { const m = lin ? 0.5 : 128; er = Math.max(-m, Math.min(m, er)); eg = Math.max(-m, Math.min(m, eg)); eb = Math.max(-m, Math.min(m, eb)); }   // keep the error bounded for colours the panel cannot reach (otherwise it piles up and washes out whole areas)
         const dx = ltr ? 1 : -1;
         const add = (xx, base, f) => { if (xx >= 0 && xx < PW){ err[base + xx*3] += er*f; err[base + xx*3+1] += eg*f; err[base + xx*3+2] += eb*f; } };
         add(x + dx, cur, 7/16);
@@ -426,9 +445,9 @@ function chartGradients(){
   const put = (x, y, c) => { const p = (y * PW + x) * 4; rgba[p] = c[0]; rgba[p+1] = c[1]; rgba[p+2] = c[2]; };
   const bands = [[1,0],[1,2],[0,3],[3,2],[0,2]];                                   // K>W, K>R, W>Y, Y>R, W>R, mixed in linear light
   bands.forEach(([a, b], r) => { for (let x = 0; x < 624; x++) { const t = x / 623; const c = [0,1,2].map(i => enc(lin(PAL[a][i]) * (1 - t) + lin(PAL[b][i]) * t)); for (let y = 0; y < 90; y++) put(24 + x, 80 + r * 104 + y, c); } });
-  [64, 128, 192].forEach((v, i) => { for (let y = 0; y < 110; y++) for (let x = 0; x < 192; x++) put(24 + i * 216 + x, 620 + y, [v, v, v]); });       // flat grays 25 / 50 / 75 % (sRGB)
+  [64, 128, 192].forEach((v0, i) => { const v = palMeasured ? l2s(gmap(s2l(v0))) : v0; for (let y = 0; y < 110; y++) for (let x = 0; x < 192; x++) put(24 + i * 216 + x, 620 + y, [v, v, v]); });       // flat grays 25 / 50 / 75 % (sRGB), squeezed into the panel's range when the measured palette is on
   [[1,0],[2,0],[3,0]].forEach(([a], i) => { for (let y = 0; y < 90; y++) for (let x = 0; x < 192; x++) put(24 + i * 216 + x, 760 + y, PAL[a]); });          // solid black, red, yellow
-  const idx = quantize(rgba, "fs");
+  const idx = quantize(rgba, "fs", true);
   const {rect, frameR, marks} = chartKit();
   const set = (x, y, k) => { idx[y * PW + x] = k; };
   const R = (x, y, w, h, k) => { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) set(x + i, y + j, k); };
@@ -507,16 +526,20 @@ $("file").onchange = e => {
   const f = e.target.files[0];
   if (!f) return;
   const img = new Image();
-  img.onload = () => { srcImg = img; chartIdx = null; render(); };
+  img.onload = () => { srcImg = img; chartIdx = null; chartFn = null; render(); };
   img.onerror = () => add("не удалось открыть картинку", "sys");
   img.src = URL.createObjectURL(f);
 };
 ["fit", "rot", "dith"].forEach(id => $(id).onchange = render);
 try{ const f = localStorage.getItem("frame970.flip"); if (f !== null) $("flip").checked = f === "1"; }catch(_){}
 $("flip").onchange = () => { try{ localStorage.setItem("frame970.flip", flipOn() ? "1" : "0"); }catch(_){} render(); };
-$("bCal1").onclick = () => { chartIdx = chartColours(); render(); };
-$("bCal2").onclick = () => { chartIdx = chartGradients(); render(); };
-$("bCal3").onclick = () => { chartIdx = chartTv(); render(); };
+let chartFn = null;
+const setChart = fn => { chartFn = fn; chartIdx = fn(); render(); };
+$("bCal1").onclick = () => setChart(chartColours);
+$("bCal2").onclick = () => setChart(chartGradients);
+$("bCal3").onclick = () => setChart(chartTv);
+try{ const pm = localStorage.getItem("frame970.pal"); if (pm !== null){ $("pal").value = pm; setPalette(pm === "1"); } }catch(_){}
+$("pal").onchange = () => { const m = $("pal").value === "1"; setPalette(m); try{ localStorage.setItem("frame970.pal", m ? "1" : "0"); }catch(_){} if (chartFn && chartIdx) chartIdx = chartFn(); render(); };
 
 /* lines from the tag that start with "UP " are queued for the upload code */
 const upq = []; let upw = null;
