@@ -153,11 +153,11 @@ label{color:var(--mut);font-size:13px}
     <button class="nc" id="bOdSet">Записать в метку (4D)</button>
   </div>
   <div class="row">
-    <label>имя метки</label><b>OD</b><input id="devName" maxlength="6" placeholder="до 6 символов (вместо MAC)" style="width:170px">
+    <label>имя метки</label><b>OD-</b><input id="devName" maxlength="5" placeholder="до 5 символов" style="width:130px">
     <button class="nc" id="bNameSet">Задать</button>
-    <button class="nc" id="bNameDef">Сбросить (OD + MAC)</button>
+    <button class="nc" id="bNameDef">Сбросить (OD-xxxx)</button>
   </div>
-  <div class="row"><small style="color:var(--mut)">Имя всегда начинается с OD (его ищут клиенты OpenDisplay), а вместо шести цифр MAC можно задать свой хвост до 6 латинских символов, цифр и знаков, например OD-KUHNYA. Он виден в списке устройств и при сканировании. Пустое поле + «Сбросить» вернёт OD + MAC.</small></div>
+  <div class="row"><small style="color:var(--mut)">Имя всегда выглядит как OD-… (так метку находят клиенты OpenDisplay). Вместо четырёх цифр MAC можно задать свой хвост до 5 латинских символов, цифр и знаков, например OD-Milan. Он виден в списке устройств и при сканировании. «Сбросить» возвращает OD- и две последние пары цифр MAC.</small></div>
   <div class="row">
     <label>чанк</label><input id="odChunk" type="number" min="10" max="230" value="230" style="width:70px"><label>байт</label>
     <button class="nc pri" id="bOdUp" disabled>Загрузить по OpenDisplay</button>
@@ -219,6 +219,27 @@ label{color:var(--mut);font-size:13px}
     <button id="bAuto">Задать (04)</button>
     <button data-c="04 00">Отключить авто-сон</button>
   </div>
+</div>
+
+<div class="card">
+  <h2>Состояние</h2>
+  <div class="row">
+    <span>Питание: <b id="stV">—</b></span>
+    <span>под нагрузкой (обновление панели): <b id="stVL">—</b></span>
+    <span id="stBat"></span>
+  </div>
+  <div class="row">
+    <span>Температура панели: <b id="stT">—</b></span>
+    <span id="stTA" style="color:var(--mut)"></span>
+  </div>
+  <div class="row">
+    <button class="nc" id="bStat">Обновить (4F 03)</button>
+    <button class="nc" id="bStatT">Измерить температуру панели (32)</button>
+    <label>светодиод</label>
+    <select id="ledMode"><option value="2" selected>все события</option><option value="1">только загрузка, ошибки, низкий заряд</option><option value="0">выключен</option></select>
+    <button class="nc" id="bLed">Задать (4F 04)</button>
+  </div>
+  <div class="row"><small style="color:var(--mut)">Питание: литиевый элемент 3 В; норма выше 2,7 В, ниже 2,7 В «низкое», ниже 2,5 В «критическое» (красные вспышки). Измерение без калибровки, точность около ±5 %. Температуру панели метка читает при каждом обновлении, отдельное измерение включает панель примерно на секунду. Значения обновляются раз в 30 с, пока вы подключены.</small></div>
 </div>
 
 <div class="card">
@@ -289,7 +310,7 @@ function onNotify(ev){
   const bytes = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
   if (!buf.length && bytes.length >= 2 && (bytes[0] === 0x00 || bytes[0] === 0xFF)){ odHook(bytes); return; }      // OpenDisplay reply, text lines never start with 00 or FF
   for (const b of bytes){
-    if (b === 10){ if (buf.length){ add(buf); lineHook(buf); } buf = ""; }
+    if (b === 10){ if (buf.length){ if (sysQuiet > 0 && /^SYS /.test(buf)) sysQuiet--; else add(buf); lineHook(buf); } buf = ""; }
     else if (b === 13) {}
     else if (b >= 32 && b < 127) buf += String.fromCharCode(b);
     else buf += "\\x" + b.toString(16).padStart(2,"0");
@@ -605,7 +626,21 @@ $("pal").onchange = () => { const m = $("pal").value === "1"; setPalette(m); try
 
 /* lines from the tag that start with "UP " are queued for the upload code */
 const upq = []; let upw = null;
+let sysQuiet = 0;
 function lineHook(t){
+  const sy = /^SYS tx=(\d+) wd=(\d+) led=(\d+) v=(\d+) vl=(\d+) t=(-?\d+) ta=(-?\d+)/.exec(t);
+  if (sy){                       // supply, temperature, and the stored system settings
+    $("txIdx").value = sy[1]; $("wdOn").checked = sy[2] === "1"; $("ledMode").value = sy[3];
+    const v = +sy[4], vl = +sy[5];
+    $("stV").textContent = v ? (v / 1000).toFixed(2) + " В" : "нет данных";
+    $("stVL").textContent = vl ? (vl / 1000).toFixed(2) + " В" : "ещё не измерялось";
+    $("stBat").textContent = !v ? "" : v < 2500 ? "критически низкое" : v < 2700 ? "низкое" : "норма";
+    $("stBat").style.color = !v ? "" : v < 2500 ? "#d33" : v < 2700 ? "#c80" : "#2a2";
+    const ta = +sy[7];
+    $("stT").textContent = ta < 0 ? "ещё не измерялась" : sy[6] + " °C";
+    $("stTA").textContent = ta < 0 ? "" : "(" + (ta < 90 ? ta + " с" : Math.round(ta / 60) + " мин") + " назад)";
+    return;
+  }
   const ss = /^SS (on|off) every=(\d+) mask=([0-9A-F]+) poll=(\d+) clean=(\d+)\/(\d+)/.exec(t);
   if (ss){                       // slideshow settings from the tag: fill the form
     $("ssOn").checked = ss[1] === "on"; $("ssEvery").value = ss[2];
@@ -755,10 +790,14 @@ $("bOdCfg").onclick = () => send("00 40");
 $("bOdMsd").onclick = () => send("00 44");
 $("bNameSet").onclick = () => {
   const t = $("devName").value.trim();
-  if (!/^[\x20-\x7e]{1,6}$/.test(t)){ add("имя: 1–6 символов ASCII после OD", "sys"); return; }
+  if (!/^[\x20-\x7e]{1,5}$/.test(t)){ add("имя: 1–5 символов ASCII после OD-", "sys"); return; }
   send(Uint8Array.from([0x4e, ...Array.from(t).map(c => c.charCodeAt(0))]));
 };
 $("bNameDef").onclick = () => send("4e");
+$("bStat").onclick = () => { sysQuiet = 0; send("4f 03"); };
+$("bStatT").onclick = async () => { send("32"); await new Promise(r => setTimeout(r, 4000)); sysQuiet = 0; send("4f 03"); };
+$("bLed").onclick = () => send("4f 04 " + h2(+$("ledMode").value));
+setInterval(() => { if (chr && dev && dev.gatt.connected && !upBusy){ sysQuiet++; send("4f 03").catch(() => {}); } }, 30000);
 $("bTx").onclick = () => send("4f 01 " + h2(+$("txIdx").value));
 $("bWd").onclick = () => send("4f 02 " + ($("wdOn").checked ? "01" : "00"));
 $("bSys").onclick = () => send("4f 03");
